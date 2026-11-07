@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
   <meta charset="utf-8">
+  <!-- 読み込めるのはこのサイトのファイルだけにする（万一 HTML を差し込まれても、スクリプトを動かさない。仕様書 5） -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self'; font-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Doll Pigment Atelier</title>
   <meta name="description" content="成功した色を蓄積し、再現を支援するドールメイク用アトリエツール">

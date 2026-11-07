@@ -72,7 +72,30 @@ const Zip = (() => {
     return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
   }
 
-  // ZIP の Blob → Map(ファイル名 → Blob)。ZIP として読めなければ例外
+  // 展開の上限（展開すると巨大になる ZIP〈ZIP 爆弾〉でタブが落ちないようにする）
+  const LIMITS = {
+    files: 20000,                 // ファイルの数
+    entryBytes: 200 * 1024 * 1024, // 1つのファイルの展開後の大きさ
+    totalBytes: 2 * 1024 * 1024 * 1024, // 展開後の合計
+  };
+  class ZipLimitError extends Error {}
+
+  // deflate を展開する。limit バイトを超えたら途中でやめて例外
+  async function inflate(raw, limit) {
+    const reader = raw.stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+    const chunks = [];
+    let n = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      n += value.length;
+      if (n > limit) { reader.cancel().catch(() => {}); throw new ZipLimitError('entry too large'); }
+      chunks.push(value);
+    }
+    return new Blob(chunks);
+  }
+
+  // ZIP の Blob → Map(ファイル名 → Blob)。ZIP として読めなければ例外（上限を超えたら ZipLimitError）
   async function read(blob) {
     const buf = new Uint8Array(await blob.arrayBuffer());
     const dv = new DataView(buf.buffer);
@@ -82,27 +105,36 @@ const Zip = (() => {
     }
     if (eocd < 0) throw new Error('not a zip');
     const count = dv.getUint16(eocd + 10, true);
+    if (count > LIMITS.files) throw new ZipLimitError('too many files');
     let p = dv.getUint32(eocd + 16, true);
     const dec = new TextDecoder();
     const out = new Map();
+    let total = 0;
     for (let n = 0; n < count; n++) {
       if (dv.getUint32(p, true) !== 0x02014B50) throw new Error('broken zip');
       const method = dv.getUint16(p + 10, true);
-      const size = dv.getUint32(p + 20, true);
+      const size = dv.getUint32(p + 20, true);    // 圧縮後
+      const usize = dv.getUint32(p + 24, true);   // 展開後（申告の値）
       const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), commentLen = dv.getUint16(p + 32, true);
       const localAt = dv.getUint32(p + 42, true);
       const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
       p += 46 + nameLen + extraLen + commentLen;
       if (name.endsWith('/')) continue; // フォルダ
+      if (usize > LIMITS.entryBytes) throw new ZipLimitError('entry too large');
       const start = localAt + 30 + dv.getUint16(localAt + 26, true) + dv.getUint16(localAt + 28, true);
+      if (start + size > buf.length) throw new Error('broken zip');
       const raw = new Blob([buf.subarray(start, start + size)]);
-      if (method === 0) out.set(name, raw);
-      else if (method === 8 && typeof DecompressionStream === 'function') {
-        out.set(name, await new Response(raw.stream().pipeThrough(new DecompressionStream('deflate-raw'))).blob());
-      } else throw new Error(`unsupported method ${method}`);
+      let file;
+      if (method === 0) file = raw;
+      // 申告の大きさを超えて展開しない（申告をごまかした ZIP 爆弾を止める）
+      else if (method === 8 && typeof DecompressionStream === 'function') file = await inflate(raw, usize);
+      else throw new Error(`unsupported method ${method}`);
+      total += file.size;
+      if (total > LIMITS.totalBytes) throw new ZipLimitError('total too large');
+      out.set(name, file);
     }
     return out;
   }
 
-  return { create, read, crc32 };
+  return { create, read, crc32, LIMITS, ZipLimitError };
 })();

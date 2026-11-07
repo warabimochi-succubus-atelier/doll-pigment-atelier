@@ -1128,8 +1128,12 @@
     } finally { btn.disabled = false; }
   });
   // ZIP（この版のバックアップ）と JSON（以前の版のバックアップ。画像はサムネイルだけ）を読み込める
+  // 読み込むファイルの大きさの上限（大きすぎるファイルでタブが落ちないようにする。ZIP の展開の上限は zip.js）
+  const MAX_BACKUP_BYTES = 1024 * 1024 * 1024; // ZIP：1GB
+  const MAX_JSON_BYTES = 100 * 1024 * 1024;    // 以前の版の JSON：100MB
   async function readBackup(f) {
     const isZip = /\.zip$/i.test(f.name) || f.type.includes('zip');
+    if (f.size > (isZip ? MAX_BACKUP_BYTES : MAX_JSON_BYTES)) throw new Zip.ZipLimitError('file too large');
     if (!isZip) return { data: JSON.parse(await f.text()), images: [] };
     const files = await Zip.read(f);
     const data = JSON.parse(await files.get('data.json').text());
@@ -1150,7 +1154,12 @@
       ({ data, images } = await readBackup(f));
       if (!Array.isArray(data.entries)) throw new Error('format');
       if (data.format > BACKUP_FORMAT) return toast('新しい版のアプリで書き出したバックアップです。アプリを更新してから読み込んでください');
-    } catch (err) { console.warn(err); return toast('バックアップファイルを読み込めませんでした'); }
+    } catch (err) {
+      console.warn(err);
+      return toast(err instanceof Zip.ZipLimitError
+        ? 'ファイルが大きすぎるため読み込めません（このアプリで書き出したバックアップか確認してください）'
+        : 'バックアップファイルを読み込めませんでした');
+    }
     if (!confirm(`カラー ${data.entries.length} 件${images.length ? `と画像 ${images.length} 枚` : ''}をインポートします。現在のデータは置き換わります。`)) return;
     const ok = await Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], lastMedium: data.lastMedium }, images);
     toast(ok ? 'インポートしました' : SAVE_FAILED);

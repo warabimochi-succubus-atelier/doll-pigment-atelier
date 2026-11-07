@@ -50,13 +50,6 @@ const Store = (() => {
     ];
   }
 
-  // 使用絵具は「リキテックス」に固定する（以前の版で「リキテックス レギュラー」などと記録したデータもそろえる）
-  function migrate(d) {
-    for (const e of d.entries || []) {
-      if (e.cond) e.cond.brand = DEFAULT_BRAND;
-    }
-    return d;
-  }
   // ---------------- 読み込んだデータの確認 ----------------
   // バックアップや以前の版のデータは外から来るので、形をそろえ、画面に出す値を安全なものだけにする
   // （HEX は正しい色だけ、id は英数字だけ、など。画面では一部の値をそのまま HTML に入れているため）
@@ -192,6 +185,15 @@ const Store = (() => {
       s.meta.put({ key: 'initialized', value: Date.now() });
     });
   }
+  // エントリと設定だけを書き直す（起動時にデータの形をそろえたとき。画像は書き直さない）
+  function writeEntriesAndMeta() {
+    return write(['entries', 'meta'], (s) => {
+      s.entries.clear();
+      db.entries.forEach((e) => s.entries.put(e));
+      s.meta.put({ key: 'owned', value: db.owned });
+      s.meta.put({ key: 'lastMedium', value: db.lastMedium });
+    });
+  }
   // ---------------- 画像 ----------------
   const imageRefs = (e) => [...(e.refImages || []), ...(e.recordImages || [])];
   function dataUrlToBlob(src) {
@@ -260,7 +262,11 @@ const Store = (() => {
       const m = Object.fromEntries(meta.map((x) => [x.key, x.value]));
       images = new Map(imgs.map((im) => [im.id, im]));
       if (m.initialized) {
-        db = migrate({ version: 1, entries: byNewest(entries), owned: m.owned || [], lastMedium: m.lastMedium || 'painting-medium' });
+        // 保存済みのデータも確かめてから使う（以前の版でインポートしたデータは確かめていないため）。
+        // 形が変わったときだけ書き直す（エントリと設定だけ。画像はそのまま）
+        const raw = { entries, owned: m.owned || [], lastMedium: m.lastMedium || 'painting-medium' };
+        db = cleanDb(raw);
+        if (JSON.stringify(db) !== JSON.stringify({ version: 1, ...raw, entries: byNewest([...entries]) })) await writeEntriesAndMeta();
         // 以前の版で保存したサムネイル（data URL）を画像として取り出す
         if (extractInlineImages(db.entries)) await writeAll();
         await collectGarbage();
