@@ -114,7 +114,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .field { margin: 14px 0 8px; }
 .field > label { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
-.seg button { border: 0; background: transparent; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+.seg button { border: 0; background: transparent; color: inherit; font: inherit; padding: 6px 12px; cursor: pointer; font-size: 13px; }
+.seg-lines { justify-self: start; max-width: 100%; }
+.seg-lines small { margin-left: 4px; color: var(--ink-2); font-weight: 400; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent-2); color: var(--accent); font-weight: 600; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
@@ -306,6 +308,7 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tag.op-transparent { background: color-mix(in srgb, #3b82c4 14%, transparent); color: #2e6ea8; }
 .tag.op-semi { background: color-mix(in srgb, #8a6fc4 14%, transparent); color: #6c55a8; }
 .tag.op-opaque { background: var(--surface-2); color: var(--ink-2); }
+.tag.tag-stop { background: color-mix(in srgb, #c45a3b 12%, transparent); color: #a8482e; }
 .tag-muted { background: transparent; border: 1px dashed var(--line); color: var(--ink-2); }
 .paint-filters { display: grid; gap: 10px; }
 label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
@@ -325,6 +328,7 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
 .dialog form { display: flex; flex-direction: column; max-height: calc(100dvh - 32px); }
 .dlg-head { display: flex; gap: 14px; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .dlg-sw { width: 56px; height: 56px; border-radius: 12px; border: 1px solid rgba(0,0,0,.1); flex: none; }
+input.readonly:not([type=checkbox]) { background: var(--surface-2); color: var(--ink-2); cursor: default; }
 .title-input { width: 100%; font-size: 17px !important; font-weight: 700; border-color: transparent !important; padding: 2px 6px !important; margin-left: -6px; }
 .title-input:hover { border-color: var(--line) !important; }
 .dlg-body { padding: 4px 18px 16px; overflow-y: auto; }

@@ -1,9 +1,12 @@
-// 標準DB（リキテックス レギュラー）と Kubelka-Munk による混色・逆引き調色
+// 標準DB（リキテックス レギュラー / ソフト / ベーシックス）と Kubelka-Munk による混色・逆引き調色
 // ※モック: K・S は実測ではなく、仮の色（チャートの色見本の平均色）と仮の着色力から RGB 3チャンネルで近似した値
 const PaintDB = (() => {
   const OPACITY = { opaque: '不透明', semi: '半透明', transparent: '透明' };
 
-  const paints = PAINT_DATA.map(([id, no, name, hex, opacity, group, strength]) => {
+  const lines = PAINT_LINES;
+  const lineById = Object.fromEntries(lines.map((l) => [l.id, l]));
+
+  const paints = PAINT_DATA.map(([id, line, no, name, hex, opacity, group, strength, discontinued = false]) => {
     const rgb = Color.parseHex(hex);
     const R = Color.rgbToLinear(rgb).map((r) => Math.min(0.97, Math.max(0.035, r)));
     const ks = R.map((r) => ((1 - r) * (1 - r)) / (2 * r));
@@ -11,8 +14,11 @@ const PaintDB = (() => {
     const K = ks.map((v) => v * strength);
     // メタリック・蛍光・イリディッセントは混色計算で表せないので、逆引き調色に使わない
     const mixable = group !== 'special';
-    // label は画面表示用（品番＋色名）
-    return { id, no, name, label: `${no} ${name}`, hex, rgb, lab: Color.rgbToLab(rgb), K, S, strength, opacity, group, mixable };
+    // label は画面表示用（品番＋色名。ベーシックスは品番がないので色名だけ）
+    // fullLabel はラインの違う同じ色と区別するための表示（ラインを添える）
+    const label = no ? `${no} ${name}` : name;
+    const fullLabel = `${label}（${lineById[line].name}）`;
+    return { id, line, no, name, label, fullLabel, hex, rgb, lab: Color.rgbToLab(rgb), K, S, strength, opacity, group, mixable, discontinued };
   });
   const byId = Object.fromEntries(paints.map((p) => [p.id, p]));
 
@@ -25,7 +31,10 @@ const PaintDB = (() => {
   ];
   const mediumById = Object.fromEntries(mediums.map((m) => [m.id, m]));
 
-  const WHITE_ID = 'lq101'; // チタニウムホワイト（白との混色見本に使う）
+  // チタニウムホワイト（ラインごとに1色。白との混色見本と、明るさの調整に使う）
+  const WHITE_ID = 'lq101'; // レギュラーのチタニウムホワイト（どの白も所持していないときの既定）
+  const whiteOf = Object.fromEntries(lines.map((l) => [l.id, paints.find((p) => p.line === l.id && p.name === 'チタニウムホワイト')]));
+  const WHITE_IDS = Object.values(whiteOf).filter(Boolean).map((p) => p.id);
   // サンプルデータの調色記録を作るときに使う12色
   // ナフソールレッドライト、ナフソールクリムソン、ビビッドレッドオレンジ、イエローミディアムアゾ、パーマネントグリーンライト、
   // フタロシアニングリーン、フタロシアニンブルー、ウルトラマリンブルー、ディオキサジンパープル、バーントシェンナ、マースブラック、チタニウムホワイト
@@ -85,6 +94,8 @@ const PaintDB = (() => {
   // 逆引き調色：使える絵具の中から最大4色・5%刻みで候補を探す
   // 手持ちが多いときは、2色の組み合わせで有望な絵具に絞ってから3色・4色を探す（計算時間を抑えるため）
   const MAX_POOL = 18;
+  // ラインが違うだけの同じ色名の絵具（例：レギュラーとベーシックスのチタニウムホワイト）は、1つの候補に同時に使わない
+  const sameName = (set, p) => set.some((q) => q.name === p.name);
   function reverse(targetRgb, availableIds, top = 3) {
     const targetLab = Color.rgbToLab(targetRgb);
     let pool = availableIds.map((id) => byId[id]).filter((p) => p && p.mixable);
@@ -95,6 +106,7 @@ const PaintDB = (() => {
       found.push(one);
       pairBest.set(pool[i], Math.min(pairBest.get(pool[i]), one.d));
       for (let j = i + 1; j < pool.length; j++) {
+        if (pool[i].name === pool[j].name) continue;
         const two = bestForSet([pool[i], pool[j]], targetLab);
         found.push(two);
         pairBest.set(pool[i], Math.min(pairBest.get(pool[i]), two.d));
@@ -103,21 +115,25 @@ const PaintDB = (() => {
     }
     if (pool.length > MAX_POOL) {
       pool = [...pool].sort((a, b) => pairBest.get(a) - pairBest.get(b)).slice(0, MAX_POOL);
-      // 白は明るさの調整に使うので、持っていれば必ず残す
-      const white = byId[WHITE_ID];
-      if (availableIds.includes(WHITE_ID) && !pool.includes(white)) pool[pool.length - 1] = white;
+      // 白は明るさの調整に使うので、持っていれば必ず1色は残す
+      const white = WHITE_IDS.map((id) => byId[id]).find((p) => availableIds.includes(p.id));
+      if (white && !pool.some((p) => WHITE_IDS.includes(p.id))) pool[pool.length - 1] = white;
     }
     const n = pool.length;
     for (let i = 0; i < n; i++) {
       for (let j = i + 1; j < n; j++) {
-        for (let k = j + 1; k < n; k++) found.push(bestForSet([pool[i], pool[j], pool[k]], targetLab));
+        if (pool[i].name === pool[j].name) continue;
+        for (let k = j + 1; k < n; k++) {
+          if (sameName([pool[i], pool[j]], pool[k])) continue;
+          found.push(bestForSet([pool[i], pool[j], pool[k]], targetLab));
+        }
       }
     }
     found.sort((a, b) => a.d - b.d);
     const seeds = found.filter((r) => r.set.length >= 2).slice(0, 6);
     for (const s of seeds) {
       for (const p of pool) {
-        if (s.set.includes(p)) continue;
+        if (s.set.includes(p) || sameName(s.set, p)) continue;
         found.push(bestForSet([...s.set, p], targetLab));
       }
     }
@@ -128,7 +144,8 @@ const PaintDB = (() => {
       .map((r) => finalize(r, targetLab))
       .sort((a, b) => a.score - b.score)
       .filter((c) => {
-        const key = c.items.map((x) => x.paintId).sort().join('|');
+        // 色名の組み合わせが同じ候補（ラインが違うだけ）は、いちばん近いものだけを残す
+        const key = c.items.map((x) => byId[x.paintId].name).sort().join('|');
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
@@ -141,10 +158,11 @@ const PaintDB = (() => {
     const targetLab = Color.rgbToLab(targetRgb);
     const used = new Set(candidate.items.map((x) => x.paintId));
     const from = byId[paintId];
+    const rest = candidate.items.filter((x) => x.paintId !== paintId).map((x) => byId[x.paintId]);
     const alt = availableIds
       .filter((id) => !used.has(id) && id !== paintId)
       .map((id) => byId[id])
-      .filter((p) => p && p.mixable)
+      .filter((p) => p && p.mixable && !sameName(rest, p))
       .sort((a, b) => Color.dE00(a.lab, from.lab) - Color.dE00(b.lab, from.lab))[0];
     if (!alt) return null;
     const set = candidate.items.map((x) => (x.paintId === paintId ? alt : byId[x.paintId]));
@@ -162,5 +180,5 @@ const PaintDB = (() => {
     return out;
   }
 
-  return { paints, byId, OPACITY, WHITE_ID, STARTER_IDS, mediums, mediumById, mixRgb, reverse, substitute, evaluate };
+  return { lines, lineById, paints, byId, OPACITY, WHITE_ID, WHITE_IDS, whiteOf, STARTER_IDS, mediums, mediumById, mixRgb, reverse, substitute, evaluate };
 })();

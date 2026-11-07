@@ -13,7 +13,7 @@
 class Picker {
   static MIN_ZOOM = 1;
   static MAX_ZOOM = 8;
-  static LONG_PRESS_MS = 350;
+  static LONG_PRESS_MS = 300; // 仕様：約0.3秒
   static TAP_SLOP = 10; // これ以上動いたらタップ・長押しではなくスクロールとみなす（px）
 
   constructor(host, { onPick, onGray, overlays, onZoom }) {

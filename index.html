@@ -125,7 +125,7 @@
     <section id="view-library" class="view">
       <div class="card">
         <div class="filters">
-          <input id="lib-q" placeholder="名称・コメント・ヘッドで検索" class="grow">
+          <input id="lib-q" placeholder="名称・コメント・制作条件で検索" class="grow">
           <select id="lib-part"><option value="">すべての部位</option></select>
           <select id="lib-rating">
             <option value="0">評価：すべて</option>
@@ -147,11 +147,12 @@
     <section id="view-paints" class="view">
       <div class="card">
         <div class="card-head">
-          <h2>リキテックス レギュラー（122色）</h2>
+          <h2>リキテックス</h2>
           <span class="badge" id="owned-count"></span>
         </div>
-        <p class="hint">持っている絵具に「所持」のチェックを入れてください。逆引き調色は、所持している絵具だけで候補を出します。白との混色見本（絵具のみ / 1:1 / 1:4 / 1:10）は予測の色です。</p>
+        <p class="hint">持っている絵具に「所持」のチェックを入れてください。逆引き調色は、所持している絵具だけで候補を出します（レギュラー・ソフト・ベーシックスを混ぜて使えます）。白との混色見本（絵具のみ / 1:1 / 1:4 / 1:10）は予測の色です。</p>
         <div class="paint-filters card-block">
+          <div class="seg seg-lines" id="paint-lines" role="group" aria-label="ライン"></div>
           <input type="search" id="paint-q" placeholder="品番・色名で検索（例：008、ナフソール）" aria-label="品番・色名で検索">
           <div class="row gap-s wrap between">
             <label class="check"><input type="checkbox" id="paint-owned-only">所持のみ表示</label>
@@ -164,7 +165,7 @@
             <tbody id="paint-rows"></tbody>
           </table>
         </div>
-        <p class="hint card-block">出典：リキテックス レギュラー カラーチャート（2026年5月版）の色名と透明度。色見本はチャートから取った仮の色で、実際の色とは異なります。</p>
+        <p class="hint card-block" id="paint-source"></p>
       </div>
       <div class="card muted-card">
         <div class="card-head"><h2>ユーザー絵具の登録</h2><span class="badge badge-future">将来機能</span></div>

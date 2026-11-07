@@ -4,6 +4,7 @@ const Store = (() => {
   const PARTS = ['頬', '唇', 'アイシャドウ', 'アイライン', 'カスタム'];
   const SKINS = ['セミホワイト', 'フレッシュ', 'ノーマル', 'ホワイト', 'その他'];
   const TOPCOATS = ['つや消し', '半つや', 'つや有り'];
+  const DEFAULT_BRAND = 'リキテックス'; // 制作条件「使用絵具」（固定。ライン〈レギュラー・ソフト・ベーシックス〉は実際の調色の絵具でわかる）
 
   const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -13,7 +14,7 @@ const Store = (() => {
       createdAt: Date.now() - daysAgo * 86400000,
       refImages: [], recordImages: [], extracted: [o.hex], method: 'average',
       comment: '',
-      cond: { head: 'DDH-29', skin: 'セミホワイト', topcoat: 'つや消し', brand: 'リキテックス', medium: 'painting-medium' },
+      cond: { head: 'DDH-29', skin: 'セミホワイト', topcoat: 'つや消し', brand: DEFAULT_BRAND, medium: 'painting-medium' },
       estimated: [], customPart: '',
       ...o,
     });
@@ -27,10 +28,10 @@ const Store = (() => {
     return [
       withMix(mk({ name: 'DDH-29 チークA', part: '頬', hex: '#E9A3A0', rating: 5, comment: '少し暖色寄り。3回重ねる' }, 2)),
       withMix(mk({ name: '幼い魔性チーク', part: '頬', hex: '#E494A6', rating: 5, comment: '頬の中心だけ重ねる（4回）。青みピンク',
-        cond: { head: 'DDH-27', skin: 'セミホワイト', topcoat: 'つや消し', brand: 'リキテックス', medium: 'painting-medium' } }, 9)),
+        cond: { head: 'DDH-27', skin: 'セミホワイト', topcoat: 'つや消し', brand: DEFAULT_BRAND, medium: 'painting-medium' } }, 9)),
       withMix(mk({ name: 'くすみローズの唇', part: '唇', hex: '#B9646C', rating: 4, comment: 'グラデの濃い側' }, 20)),
       withMix(mk({ name: 'ブラウン系アイシャドウ', part: 'アイシャドウ', hex: '#B08A72', rating: 3, comment: 'もう少し赤みが欲しい',
-        cond: { head: 'DDH-10', skin: 'フレッシュ', topcoat: 'つや消し', brand: 'リキテックス', medium: 'painting-medium' } }, 35)),
+        cond: { head: 'DDH-10', skin: 'フレッシュ', topcoat: 'つや消し', brand: DEFAULT_BRAND, medium: 'painting-medium' } }, 35)),
       withMix(mk({ name: 'こげ茶アイライン', part: 'アイライン', hex: '#3E2A24', rating: 4, comment: '細筆で2回' }, 41)),
       withMix(mk({ name: 'ピーチチーク（室内光）', part: '頬', hex: '#EFB49A', rating: 2, comment: '黄みが強すぎた' }, 60)),
     ];
@@ -41,9 +42,16 @@ const Store = (() => {
   function load() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (raw) return JSON.parse(raw);
+      if (raw) return migrate(JSON.parse(raw));
     } catch (e) { /* ignore */ }
     return fresh(sample());
+  }
+  // 使用絵具は「リキテックス」に固定する（以前の版で「リキテックス レギュラー」などと記録したデータもそろえる）
+  function migrate(d) {
+    for (const e of d.entries || []) {
+      if (e.cond) e.cond.brand = DEFAULT_BRAND;
+    }
+    return d;
   }
   // 所持している絵具は、最初は何もない状態から選んでもらう
   function fresh(entries) { return { version: 1, entries, owned: [], lastMedium: 'painting-medium' }; }
@@ -59,7 +67,7 @@ const Store = (() => {
   }
 
   return {
-    PARTS, SKINS, TOPCOATS, uid,
+    PARTS, SKINS, TOPCOATS, DEFAULT_BRAND, uid,
     get db() { return db; },
     entries: () => db.entries,
     get: (id) => db.entries.find((e) => e.id === id),
@@ -76,7 +84,7 @@ const Store = (() => {
     // 前回保存したカラーの使用メディウム（新しく保存するときの初期値）
     lastMedium: () => db.lastMedium || 'none',
     setLastMedium(id) { db.lastMedium = id; save(); },
-    replaceAll(next) { db = next; save(); },
+    replaceAll(next) { db = migrate(next); save(); },
     resetSample() { db = { ...fresh(sample()), owned: db.owned }; save(); },
     wipe() { db = fresh([]); save(); },
     sizeBytes: () => (localStorage.getItem(KEY) || '').length * 2,

@@ -4,7 +4,7 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const stars = (n) => '★'.repeat(n) + '<span class="off">' + '★'.repeat(5 - n) + '</span>';
-  const paintName = (id) => PaintDB.byId[id]?.label || id; // 品番＋色名
+  const paintName = (id) => PaintDB.byId[id]?.fullLabel || id; // 品番＋色名（ライン）
   const sw = (hex, cls = '') => `<span class="sw ${cls}" style="background:${hex}"></span>`;
   const mixableOwnedCount = () => PaintDB.paints.filter((p) => p.mixable && Store.isOwned(p.id)).length;
   const owned = () => PaintDB.paints.map((p) => p.id).filter(Store.isOwned);
@@ -22,7 +22,8 @@
     images: [],        // { id, name, canvas, gains, thumb }  gains はグレーカード補正のゲイン（未補正なら null）
     active: null,
     extracted: [],     // { id, imgId, rect, rgb }
-    fixed: null,       // 画像を使わない代表色 { rgb, from: 'recall' | 'input', label }（レシピ帳からの呼び出し・数値指定）
+    fixed: null,       // 画像を使わない代表色 { rgb, from: 'recall' | 'input', label, src? }（レシピ帳からの呼び出し・数値指定）
+                       // src は呼び出し元の色の取得記録 { method, extracted, refImages }（保存するときに引き継ぐ）
     similarAll: false, // レシピ帳の近い色をすべて表示するか
     candidates: [],
     candKey: null,     // 表示中の調色候補を計算した「代表色＋所持絵具」（変わったら自動で計算し直す）
@@ -417,13 +418,15 @@
   });
 
   // ---- 手動調整 ----
-  // 所持している絵具を先に並べる
+  // 所持している絵具を先に並べ、残りはラインごとにまとめる
   const paintOptions = (sel) => {
-    const opt = (p) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.label)}</option>`;
+    const opt = (p, text) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(text)}</option>`;
     const own = PaintDB.paints.filter((p) => Store.isOwned(p.id));
-    const rest = PaintDB.paints.filter((p) => !Store.isOwned(p.id));
-    return (own.length ? `<optgroup label="所持している絵具">${own.map(opt).join('')}</optgroup>` : '')
-      + `<optgroup label="${own.length ? 'そのほかの絵具' : 'すべての絵具'}">${rest.map(opt).join('')}</optgroup>`;
+    return (own.length ? `<optgroup label="所持している絵具">${own.map((p) => opt(p, p.fullLabel)).join('')}</optgroup>` : '')
+      + PaintDB.lines.map((l) => {
+        const rest = PaintDB.paints.filter((p) => p.line === l.id && !Store.isOwned(p.id));
+        return rest.length ? `<optgroup label="${esc(l.name)}${own.length ? '（未所持）' : ''}">${rest.map((p) => opt(p, p.label)).join('')}</optgroup>` : '';
+      }).join('');
   };
 
   function renderMix() {
@@ -468,7 +471,7 @@
   });
   $('#btn-add-row').addEventListener('click', () => {
     if (S.mix.length >= 6) return toast('絵具は6色までにしましょう');
-    const first = Store.isOwned(PaintDB.WHITE_ID) ? PaintDB.WHITE_ID : (Store.ownedIds()[0] || PaintDB.WHITE_ID);
+    const first = PaintDB.WHITE_IDS.find(Store.isOwned) || Store.ownedIds()[0] || PaintDB.WHITE_ID;
     S.mix.push({ paintId: first, pct: S.mix.length ? 5 : 100 });
     renderMix();
   });
@@ -478,19 +481,22 @@
     const rgb = representative() || PaintDB.evaluate(S.mix)?.rgb;
     if (!rgb) return toast('代表色か実際の調色を決めてから保存してください');
     const base = S.recalled ? Store.get(S.recalled) : null;
+    // 呼び出した色をそのまま代表色にしているときは、呼び出し元の色の取得記録を引き継ぐ
+    // （呼び出し案内を閉じて上書き先がなくなっても引き継ぐ。画面に残っている画像と抽出色は、この色とは関係がないので保存しない）
+    const src = S.fixed?.from === 'recall' ? S.fixed.src : null;
     const draft = {
       ...(base ? structuredClone(base) : {
         name: '', part: '頬', customPart: '', rating: 3, comment: '',
-        cond: { head: '', skin: 'セミホワイト', topcoat: 'つや消し', brand: 'リキテックス', medium: Store.lastMedium() }, recordImages: [],
+        cond: { head: '', skin: 'セミホワイト', topcoat: 'つや消し', brand: Store.DEFAULT_BRAND, medium: Store.lastMedium() }, recordImages: [],
       }),
       hex: Color.toHex(rgb),
-      method: S.fixed ? (S.fixed.from === 'input' ? 'manual' : (base?.method || 'average')) : 'average',
-      extracted: S.extracted.map((x) => Color.toHex(x.rgb)),
-      refImages: S.images.map((i) => ({ src: i.thumb, name: i.name, corrected: !!i.gains })),
+      method: src ? src.method : S.fixed ? 'manual' : 'average',
+      // 数値・カラーピッカーで指定した色は抽出色を使っていないので、抽出色は記録しない
+      extracted: src ? [...src.extracted] : S.fixed ? [] : S.extracted.map((x) => Color.toHex(x.rgb)),
+      refImages: src ? structuredClone(src.refImages) : S.images.map((i) => ({ src: i.thumb, name: i.name, corrected: !!i.gains })),
       estimated: S.candidates.map((c) => ({ items: c.items, de: +c.de.toFixed(2) })),
       actual: S.mix.map((x) => ({ ...x })),
     };
-    if (!S.images.length && base) draft.refImages = base.refImages;
     openEditor(draft, { fromMix: true, baseId: base?.id });
   });
 
@@ -534,7 +540,7 @@
           <label>ヘッド<input name="head" value="${esc(e.cond?.head)}" placeholder="DDH-27" list="heads"></label>
           <label>肌色<select name="skin">${Store.SKINS.map((s) => `<option ${s === e.cond?.skin ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
           <label>トップコート<select name="topcoat">${Store.TOPCOATS.map((s) => `<option ${s === e.cond?.topcoat ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
-          <label>使用絵具<input name="brand" value="${esc(e.cond?.brand || 'リキテックス')}"></label>
+          <label>使用絵具<input value="${esc(Store.DEFAULT_BRAND)}" readonly tabindex="-1" class="readonly" title="使用絵具はリキテックスに固定です。ライン（レギュラー・ソフト・ベーシックス）は調色記録の絵具に表示されます"></label>
           <label>使用メディウム<select name="medium">${PaintDB.mediums.map((m) => `<option value="${m.id}" ${m.id === (e.cond?.medium || 'none') ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
         </div>
         <datalist id="heads">${['DDH-01', 'DDH-06', 'DDH-09', 'DDH-10', 'DDH-27', 'DDH-28', 'DDH-29'].map((h) => `<option value="${h}">`).join('')}</datalist>
@@ -620,7 +626,7 @@
         part: fd.get('part'),
         customPart: fd.get('customPart') || '',
         comment: fd.get('comment'),
-        cond: { head: fd.get('head').trim(), skin: fd.get('skin'), topcoat: fd.get('topcoat'), brand: fd.get('brand').trim(), medium: fd.get('medium') },
+        cond: { head: fd.get('head').trim(), skin: fd.get('skin'), topcoat: fd.get('topcoat'), brand: Store.DEFAULT_BRAND, medium: fd.get('medium') },
       };
     }
 
@@ -669,12 +675,18 @@
       </div></button>`;
   }
 
+  // 検索の対象：名称・コメント・カスタム部位名と、制作条件（ヘッド・肌色・トップコート・使用絵具・使用メディウム）
+  const searchText = (e) => [
+    e.name, e.comment, e.customPart,
+    e.cond?.head, e.cond?.skin, e.cond?.topcoat, e.cond?.brand, PaintDB.mediumById[e.cond?.medium]?.name,
+  ].join(' ').toLowerCase();
+
   function renderLibrary() {
     const q = $('#lib-q').value.trim().toLowerCase();
     const part = $('#lib-part').value, minR = +$('#lib-rating').value, sort = $('#lib-sort').value;
     let list = Store.entries().filter((e) =>
       (!part || e.part === part) && e.rating >= minR &&
-      (!q || [e.name, e.comment, e.cond?.head, e.customPart].join(' ').toLowerCase().includes(q)));
+      (!q || searchText(e).includes(q)));
     list = list.sort(sort === 'rating' ? (a, b) => b.rating - a.rating || b.createdAt - a.createdAt
       : sort === 'name' ? (a, b) => a.name.localeCompare(b.name, 'ja') : (a, b) => b.createdAt - a.createdAt);
     $('#lib-grid').innerHTML = list.length ? list.map((e) => entryCard(e)).join('')
@@ -691,7 +703,10 @@
     const e = Store.get(id);
     if (!e) return;
     Object.assign(S, {
-      fixed: { rgb: Color.parseHex(e.hex), from: 'recall', label: `「${e.name}」から呼び出した色` },
+      fixed: {
+        rgb: Color.parseHex(e.hex), from: 'recall', label: `「${e.name}」から呼び出した色`,
+        src: { method: e.method || 'average', extracted: [...(e.extracted || [])], refImages: structuredClone(e.refImages || []) },
+      },
       candidates: (e.estimated || []).map((c) => ({ ...c, ...PaintDB.evaluate(c.items, Color.parseHex(e.hex)) })),
       mix: (e.actual || []).map((x) => ({ ...x })),
       candTime: null,
@@ -802,29 +817,36 @@
   });
 
   // ================= 絵具箱 =================
-  const PF = { ownedOnly: false, q: '' }; // 絵具箱の絞り込み
+  const PF = { line: PaintDB.lines[0].id, ownedOnly: false, q: '' }; // 絵具箱の絞り込み（ラインは1つずつ表示する）
 
-  // 品番（「8」でも「008」でも可。前方一致）または色名の一部で探す。空白は無視する
+  // 品番（「8」でも「008」でも可。前方一致）または色名の一部で探す。空白は無視する。品番のない絵具（ベーシックス）は色名だけで探す
   function matchPaint(p, q) {
     if (!q) return true;
-    if (/^\d+$/.test(q)) return Number(p.no) === Number(q) || p.no.startsWith(q);
+    if (/^\d+$/.test(q)) return !!p.no && (Number(p.no) === Number(q) || p.no.startsWith(q));
     return p.name.replace(/\s/g, '').includes(q);
   }
   function shownPaints() {
     const q = PF.q.replace(/[\s　]/g, '').replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFEE0));
-    return PaintDB.paints.filter((p) => matchPaint(p, q) && (!PF.ownedOnly || Store.isOwned(p.id)));
+    return PaintDB.paints.filter((p) => p.line === PF.line && matchPaint(p, q) && (!PF.ownedOnly || Store.isOwned(p.id)));
   }
   function renderPaints() {
-    const W = PaintDB.byId[PaintDB.WHITE_ID];
+    const ownedIn = (id) => PaintDB.paints.filter((p) => p.line === id && Store.isOwned(p.id)).length;
     $('#owned-count').textContent = `所持 ${Store.ownedIds().length} 色`;
+    $('#paint-lines').innerHTML = PaintDB.lines.map((l) => `<button type="button" data-line="${l.id}" class="${l.id === PF.line ? 'on' : ''}" aria-pressed="${l.id === PF.line}">${esc(l.name)}<small>${ownedIn(l.id) ? `${ownedIn(l.id)} / ` : ''}${PaintDB.paints.filter((p) => p.line === l.id).length}</small></button>`).join('');
+    const line = PaintDB.lineById[PF.line];
+    const lp = PaintDB.paints.filter((p) => p.line === line.id);
+    const special = lp.filter((p) => !p.mixable).length;
+    $('#paint-q').placeholder = lp.some((p) => p.no) ? '品番・色名で検索（例：008、ナフソール）' : '色名で検索（例：ナフソール）';
+    $('#paint-source').textContent = `出典：${line.chart}の${lp.some((p) => p.no) ? '品番・' : ''}色名・透明度。${line.name}は${lp.length}色で、うちメタリック・蛍光・イリディッセントの${special}色は計算対象外です。色見本はチャートから取った仮の色で、実際の色とは異なります。`;
+    const W = PaintDB.byId[PaintDB.whiteOf[PF.line]?.id || PaintDB.WHITE_ID]; // 同じラインのチタニウムホワイトと混ぜる
     const list = shownPaints();
     $('#paint-rows').innerHTML = list.length ? list.map((p) => {
       const owned = Store.isOwned(p.id);
       const ladder = !p.mixable ? [] : p === W ? [[1, 0]] : [[1, 0], [1, 1], [1, 4], [1, 10]];
       return `<tr class="${owned ? '' : 'unowned'}">
         <td><input type="checkbox" data-own="${p.id}" ${owned ? 'checked' : ''} aria-label="${esc(p.name)}を所持"></td>
-        <td><div class="pcell">${sw(p.hex)}<span><span class="pno mono">${p.no}</span>${esc(p.name)}</span></div>
-          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div></td>
+        <td><div class="pcell">${sw(p.hex)}<span>${p.no ? `<span class="pno mono">${p.no}</span>` : ''}${esc(p.name)}</span></div>
+          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div></td>
         <td>${p.mixable ? `<div class="ladder">${ladder.map(([a, w]) => {
           const hex = w ? Color.toHex(PaintDB.mixRgb([p, W], [a, w])) : p.hex;
           return `<span style="background:${hex}" title="${w ? `1:${w}` : '絵具のみ'} ${hex}"><small>${w ? `1:${w}` : '原色'}</small></span>`;
@@ -834,6 +856,10 @@
   $('#paint-rows').addEventListener('change', (e) => {
     const id = e.target.dataset.own;
     if (id) { Store.setOwned(id, e.target.checked); renderPaints(); }
+  });
+  $('#paint-lines').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-line]');
+    if (b) { PF.line = b.dataset.line; renderPaints(); }
   });
   $('#paint-owned-only').addEventListener('change', (e) => { PF.ownedOnly = e.target.checked; renderPaints(); });
   $('#paint-q').addEventListener('input', (e) => { PF.q = e.target.value; renderPaints(); });
