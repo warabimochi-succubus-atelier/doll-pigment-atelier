@@ -1,0 +1,9 @@
+# Store text as LF in the repository; each checkout uses its platform's line ending
+* text=auto
+
+*.png binary
+*.ico binary
+*.webp binary
+*.jpg binary
+*.jpeg binary
+*.pdf binary

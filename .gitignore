@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.vs/
+.vscode/
+*.swp
+
+# Logs
+*.log
+
+# Tools added later (e.g. a linter or test runner)
+node_modules/
+
+# Claude Code local settings (shared settings such as launch.json stay tracked)
+.claude/settings.local.json
+
+# Exported backups from the app's settings screen
+doll-pigment-atelier-backup-*.json
