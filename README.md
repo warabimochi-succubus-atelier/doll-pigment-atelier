@@ -1,9 +1,39 @@
-# Doll Pigment Atelier
+# Doll Pigment Atelier (ドールメイク用 調色記録・再現ツール)
 
-成功した色を蓄積し、再現を支援するドールメイク用アトリエツールです。
-仕様書（[SPECIFICATION.md](SPECIFICATION.md)）の機能を実装しています。使い方は [USER_MANUAL.md](USER_MANUAL.md) を参照してください。ビルド不要の静的 PWA（HTML / CSS / JavaScript）です。
+## Overview (English)
 
-現在の版は `js/version.js` の `APP_VERSION` です。公開するまでは 0.x で、公開するときに 1.0.0 にします。
+**Doll Pigment Atelier** is a web app (PWA) for doll makeup artists who paint with Liquitex acrylics. It records the colors that worked and helps you mix them again. It runs in the browser on phones and PCs, and you can install it to your home screen.
+
+- **A record, not a simulator**: the core of the app is a recipe book of colors that worked: the mix you actually used, a ★1–5 rating, comments, the head, skin tone, top coat, medium, and photos of the finished face. Saved colors can be searched and recalled with one tap.
+- **Colors from photos**: pick colors from several photos (front, side, daylight, indoor light). The app averages them and flags colors that stand out from the rest. A gray card in the photo lets the app correct white balance and brightness.
+- **Mixing suggestions**: for the target color, the app suggests up to three mixes of the paints you own, using up to 4 paints in 5% steps (by weight). The mixes are calculated with Mixbox, a pigment mixing model based on Kubelka–Munk theory. It covers 307 Liquitex colors (Regular, Soft and Basics), 257 of which can be used for mixing. If a paint is missing, the app replaces it with the closest paint you own.
+- **Private and offline**: all data and photos stay in the browser on your device. Nothing is sent to a server, and the app keeps working offline. You can back everything up to a single ZIP file.
+
+### Basic workflow
+
+1. In the **Paint box** tab, check the paints you own.
+2. In the **Mix** tab, pick the target color from photos (correct them with a gray card if you have one), or enter it as HEX / RGB.
+3. Check the similar colors from your recipe book and the suggested mixes. Then enter the amounts you actually mixed.
+4. **Save to recipe book**. Next time, recall the color with one tap and adjust it.
+
+The suggested mixes are only a starting point: the paint colors come from the printed color charts, and tinting strength, medium and the base color are not taken into account. The user interface is in Japanese. See [USER_MANUAL.md](USER_MANUAL.md) for the full manual and [SPECIFICATION.md](SPECIFICATION.md) for the specification (both in Japanese).
+
+---
+
+## 概要
+
+ドールメイクで「うまくいった色」を記録し、次のメイクで再現するための Web アプリ（PWA）です。参考画像から目標の色を取り出し、リキテックスのアクリル絵の具での調色割合を提案します。実際に混ぜた結果は、レシピ帳に残せます。スマホと PC のブラウザで動き、データは端末の中だけに保存します。詳しい仕様は [SPECIFICATION.md](SPECIFICATION.md)、使い方は [USER_MANUAL.md](USER_MANUAL.md) を参照してください。
+
+### 基本の流れ
+
+1. **絵具箱** で、持っている絵具に「所持」のチェックを入れる
+2. **調色** で、画像から色を取る（グレーカードが写っていれば補正する）か、HEX / RGB で色を指定する
+3. レシピ帳の近い色と調色候補（最大 4 色・5% 刻み・重量比）を見て、実際に混ぜた割合を記録する
+4. **レシピ帳に保存** する。次からは、ワンクリックで呼び出して微調整する
+
+ビルド不要の静的 PWA（HTML / CSS / JavaScript）です。現在の版は `js/version.js` の `APP_VERSION` です。公開するまでは 0.x で、公開するときに 1.0.0 にします。
+
+---
 
 ## 起動
 
