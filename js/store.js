@@ -3,13 +3,16 @@
 // データベース dpa.atelier（github.io のドメインは他のアプリと共有するため、名前に dpa. を付ける。仕様書 6.1）
 //   entries … カラーエントリ（keyPath: id）
 //   meta    … 所持している絵具・前回のメディウムなど（keyPath: key）
+//   images  … 参考画像と記録画像（keyPath: id）。{ id, name, type, w, h, full: 本画像の Blob, thumb: サムネイルの Blob }
+//             カラーエントリの refImages / recordImages は { imageId, name, ... } で画像を参照する。
+//             どのエントリからも参照されなくなった画像は消す（起動時と、エントリを保存・削除したとき）
 //
 // 画面からは同期的に読めるよう、起動時（Store.init）に全件をメモリに読み込み、
 // 書き込みはメモリを更新してから IndexedDB に反映する。書き込みの関数は保存できたかどうかを Promise で返す。
 // 以前の版（localStorage の dpa.userdb.v3）のデータは、初回の起動で IndexedDB に移し、localStorage からは消す。
 const Store = (() => {
   const DB_NAME = 'dpa.atelier';
-  const DB_VERSION = 1;
+  const DB_VERSION = 2; // 2：images を追加
   const LEGACY_KEY = 'dpa.userdb.v3';
   const PARTS = ['頬', '唇', 'アイシャドウ', 'アイライン', 'カスタム'];
   const SKINS = ['セミホワイト', 'フレッシュ', 'ノーマル', 'ホワイト', 'その他'];
@@ -62,6 +65,8 @@ const Store = (() => {
   let idb = null;          // 開いたデータベース（使えないときは null。そのときはメモリだけで動く）
   let db = fresh([]);      // メモリ上のユーザーDB { version, entries, owned, lastMedium }
   let persistAsked = false;
+  let images = new Map();  // 画像 id → { id, name, type, w, h, full, thumb }
+  const urls = new Map();  // `${id}:thumb|full` → オブジェクト URL（表示用。画像を消したら解放する）
 
   const reqP = (req) => new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
@@ -88,6 +93,7 @@ const Store = (() => {
         const d = req.result;
         if (!d.objectStoreNames.contains('entries')) d.createObjectStore('entries', { keyPath: 'id' });
         if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'key' });
+        if (!d.objectStoreNames.contains('images')) d.createObjectStore('images', { keyPath: 'id' });
       };
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
@@ -97,15 +103,69 @@ const Store = (() => {
   const putMeta = (key) => write('meta', (s) => s.meta.put({ key, value: db[key] }));
   // db の内容で全部を書き直す（インポート・サンプルに戻す・すべて削除・移行）
   function writeAll() {
-    return write(['entries', 'meta'], (s) => {
+    return write(['entries', 'meta', 'images'], (s) => {
       s.entries.clear();
       s.meta.clear();
+      s.images.clear();
       db.entries.forEach((e) => s.entries.put(e));
+      images.forEach((im) => s.images.put(im));
       s.meta.put({ key: 'owned', value: db.owned });
       s.meta.put({ key: 'lastMedium', value: db.lastMedium });
       s.meta.put({ key: 'initialized', value: Date.now() });
     });
   }
+  // ---------------- 画像 ----------------
+  const imageRefs = (e) => [...(e.refImages || []), ...(e.recordImages || [])];
+  function dataUrlToBlob(src) {
+    const [head, b64] = String(src).split(',');
+    const type = (head.match(/data:([^;]+)/) || [])[1] || 'image/jpeg';
+    const bin = atob(b64 || '');
+    const buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    return new Blob([buf], { type });
+  }
+  // 以前の版はエントリの中にサムネイルを data URL（src）で持っていた。画像として取り出して参照に置き換える
+  // 本画像は残っていないので、サムネイルを本画像としても使う。置き換えたら true
+  function extractInlineImages(entries) {
+    let changed = false;
+    for (const e of entries) {
+      for (const key of ['refImages', 'recordImages']) {
+        e[key] = (e[key] || []).map((ref) => {
+          if (ref.imageId || !ref.src) return ref;
+          changed = true;
+          const blob = dataUrlToBlob(ref.src);
+          const id = uid();
+          images.set(id, { id, name: ref.name || '', type: blob.type, w: 0, h: 0, full: blob, thumb: blob });
+          const { src, ...rest } = ref;
+          return { ...rest, imageId: id };
+        });
+      }
+    }
+    return changed;
+  }
+  function forgetImage(id) {
+    images.delete(id);
+    for (const k of ['thumb', 'full']) {
+      const u = urls.get(`${id}:${k}`);
+      if (u) { URL.revokeObjectURL(u); urls.delete(`${id}:${k}`); }
+    }
+  }
+  // どのエントリからも参照されていない画像を消す
+  function collectGarbage() {
+    const used = new Set(db.entries.flatMap((e) => imageRefs(e).map((r) => r.imageId)));
+    const unused = [...images.keys()].filter((id) => !used.has(id));
+    if (!unused.length) return Promise.resolve(true);
+    unused.forEach(forgetImage);
+    return write('images', (s) => unused.forEach((id) => s.images.delete(id)));
+  }
+  function imageUrl(id, kind = 'thumb') {
+    const im = images.get(id);
+    if (!im) return '';
+    const key = `${id}:${kind}`;
+    if (!urls.has(key)) urls.set(key, URL.createObjectURL(kind === 'full' ? im.full : im.thumb));
+    return urls.get(key);
+  }
+
   function readLegacy() {
     try {
       const raw = localStorage.getItem(LEGACY_KEY);
@@ -117,16 +177,21 @@ const Store = (() => {
   async function init() {
     try {
       idb = await open();
-      const tx = idb.transaction(['entries', 'meta'], 'readonly');
-      const [entries, meta] = await Promise.all([reqP(tx.objectStore('entries').getAll()), reqP(tx.objectStore('meta').getAll())]);
+      const tx = idb.transaction(['entries', 'meta', 'images'], 'readonly');
+      const [entries, meta, imgs] = await Promise.all(['entries', 'meta', 'images'].map((n) => reqP(tx.objectStore(n).getAll())));
       const m = Object.fromEntries(meta.map((x) => [x.key, x.value]));
+      images = new Map(imgs.map((im) => [im.id, im]));
       if (m.initialized) {
         db = migrate({ version: 1, entries: byNewest(entries), owned: m.owned || [], lastMedium: m.lastMedium || 'painting-medium' });
+        // 以前の版で保存したサムネイル（data URL）を画像として取り出す
+        if (extractInlineImages(db.entries)) await writeAll();
+        await collectGarbage();
         return { ok: true, migrated: false };
       }
       // 初めての起動：以前の版のデータがあれば移し、なければサンプルデータで始める
       const legacy = readLegacy();
       db = legacy ? migrate({ ...fresh([]), ...legacy, entries: byNewest(legacy.entries || []) }) : fresh(sample());
+      extractInlineImages(db.entries);
       const ok = await writeAll();
       if (ok && legacy) { try { localStorage.removeItem(LEGACY_KEY); } catch (e) { /* 消せなくても続ける */ } }
       return { ok, migrated: !!legacy && ok };
@@ -134,8 +199,10 @@ const Store = (() => {
       // プライベートブラウズなどで IndexedDB が使えない：この画面を閉じるまでメモリだけで動かす
       console.warn(e);
       idb = null;
+      images = new Map();
       const legacy = readLegacy();
       db = legacy ? migrate({ ...fresh([]), ...legacy }) : fresh(sample());
+      extractInlineImages(db.entries);
       return { ok: false, migrated: false };
     }
   }
@@ -158,6 +225,20 @@ const Store = (() => {
 
   return {
     PARTS, SKINS, TOPCOATS, DEFAULT_BRAND, DB_NAME, uid, init,
+    // ---- 画像 ----
+    // 画像を保存して id を返す（保存できなければ null）。{ full: Blob, thumb: Blob, name, w, h }
+    // 保存した画像は、エントリから参照しないと次の起動時に消える
+    async putImage({ full, thumb, name = '', w = 0, h = 0 }) {
+      const im = { id: uid(), name, type: full.type, w, h, full, thumb };
+      images.set(im.id, im);
+      const ok = await write('images', (s) => s.images.put(im));
+      if (!ok) { forgetImage(im.id); return null; }
+      return im.id;
+    },
+    hasImage: (id) => images.has(id),
+    thumbUrl: (id) => imageUrl(id, 'thumb'),
+    fullUrl: (id) => imageUrl(id, 'full'),
+    imageRecords: () => [...images.values()], // バックアップ用
     get db() { return db; },
     get available() { return !!idb; }, // IndexedDB に保存できているか
     entries: () => db.entries,
@@ -172,12 +253,14 @@ const Store = (() => {
         const j = db.entries.indexOf(entry);
         if (prev) db.entries[j] = prev; else db.entries.splice(j, 1);
       }
-      if (ok) askPersist();
+      if (ok) { askPersist(); collectGarbage(); } // 上書きで参照しなくなった画像を消す
       return ok;
     },
-    remove(id) {
+    async remove(id) {
       db.entries = db.entries.filter((e) => e.id !== id);
-      return write('entries', (s) => s.entries.delete(id));
+      const ok = await write('entries', (s) => s.entries.delete(id));
+      if (ok) collectGarbage();
+      return ok;
     },
     isOwned: (id) => db.owned.includes(id),
     ownedIds: () => [...db.owned],
@@ -186,10 +269,22 @@ const Store = (() => {
     // 前回保存したカラーの使用メディウム（新しく保存するときの初期値）
     lastMedium: () => db.lastMedium || 'none',
     setLastMedium(id) { db.lastMedium = id; return putMeta('lastMedium'); },
-    replaceAll(next) { db = migrate({ ...fresh([]), ...next, entries: byNewest(next.entries || []) }); return writeAll(); },
-    resetSample() { db = { ...fresh(sample()), owned: db.owned }; return writeAll(); },
-    wipe() { db = fresh([]); return writeAll(); },
+    // 全部を入れ替える（インポート）。imageRecords は画像 { id, name, type, w, h, full, thumb } の一覧
+    // 以前の版のバックアップ（エントリの中にサムネイルの data URL がある）も読み込める
+    replaceAll(next, imageRecords = []) {
+      [...images.keys()].forEach(forgetImage);
+      images = new Map(imageRecords.map((im) => [im.id, im]));
+      db = migrate({ ...fresh([]), ...next, entries: byNewest(next.entries || []) });
+      extractInlineImages(db.entries);
+      const used = new Set(db.entries.flatMap((e) => imageRefs(e).map((r) => r.imageId)));
+      [...images.keys()].filter((id) => !used.has(id)).forEach(forgetImage);
+      return writeAll();
+    },
+    resetSample() { [...images.keys()].forEach(forgetImage); db = { ...fresh(sample()), owned: db.owned }; return writeAll(); },
+    wipe() { [...images.keys()].forEach(forgetImage); db = fresh([]); return writeAll(); },
     // このアプリのデータの大きさ（バイト。github.io のドメインは他のアプリと共有するので、ブラウザ全体の使用量ではなく自分の分を数える）
-    sizeBytes: () => new Blob([JSON.stringify(db)]).size,
+    sizeBytes: () => new Blob([JSON.stringify(db)]).size
+      + [...images.values()].reduce((n, im) => n + im.full.size + (im.thumb === im.full ? 0 : im.thumb.size), 0),
+    imageCount: () => images.size,
   };
 })();

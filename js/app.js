@@ -25,7 +25,8 @@
 
   // ---------------- 状態 ----------------
   const S = {
-    images: [],        // { id, name, canvas, gains, thumb }  gains はグレーカード補正のゲイン（未補正なら null）
+    images: [],        // { id, name, canvas, gains, thumb, savedId }  gains はグレーカード補正のゲイン（未補正なら null）
+                       // savedId はレシピ帳に保存したときの画像の id（同じ画像を何度も保存しないため）
     active: null,
     extracted: [],     // { id, imgId, rect, rgb }
     fixed: null,       // 画像を使わない代表色 { rgb, from: 'recall' | 'input', label, src? }（レシピ帳からの呼び出し・数値指定）
@@ -83,6 +84,12 @@
     },
   });
   const curImg = () => S.images.find((i) => i.id === S.active);
+
+  // 画像を本画像（長辺 1600px）とサムネイル（長辺 320px）にして保存し、id を返す（保存できなければ null）
+  async function storeImage(canvas, name) {
+    const [full, thumb] = await Promise.all([canvasToBlob(canvas, 1600, 0.9), canvasToBlob(canvas, 320, 0.8)]);
+    return Store.putImage({ full, thumb, name, w: canvas.width, h: canvas.height });
+  }
 
   function addImage(canvas, name) {
     const img = { id: Store.uid(), name, canvas, gains: null, thumb: canvasThumb(canvas, 160) };
@@ -483,13 +490,29 @@
   });
   $('#btn-clear-mix').addEventListener('click', () => { S.mix = []; renderMix(); });
 
-  $('#btn-save').addEventListener('click', () => {
+  $('#btn-save').addEventListener('click', async () => {
     const rgb = representative() || PaintDB.evaluate(S.mix)?.rgb;
     if (!rgb) return toast('代表色か実際の調色を決めてから保存してください');
     const base = S.recalled ? Store.get(S.recalled) : null;
     // 呼び出した色をそのまま代表色にしているときは、呼び出し元の色の取得記録を引き継ぐ
     // （呼び出し案内を閉じて上書き先がなくなっても引き継ぐ。画面に残っている画像と抽出色は、この色とは関係がないので保存しない）
     const src = S.fixed?.from === 'recall' ? S.fixed.src : null;
+    // 参考画像を先に保存しておく（保存をやめた画像は、次の起動時に消える）
+    const pending = src ? [] : S.images.filter((img) => !(img.savedId && Store.hasImage(img.savedId)));
+    if (pending.length) {
+      const btn = $('#btn-save'), label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = '画像を保存中…';
+      try {
+        for (const img of pending) {
+          img.savedId = await storeImage(img.canvas, img.name);
+          if (!img.savedId) return toast(SAVE_FAILED);
+        }
+      } finally {
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+    }
     const draft = {
       ...(base ? structuredClone(base) : {
         name: '', part: '頬', customPart: '', rating: 3, comment: '',
@@ -499,7 +522,7 @@
       method: src ? src.method : S.fixed ? 'manual' : 'average',
       // 数値・カラーピッカーで指定した色は抽出色を使っていないので、抽出色は記録しない
       extracted: src ? [...src.extracted] : S.fixed ? [] : S.extracted.map((x) => Color.toHex(x.rgb)),
-      refImages: src ? structuredClone(src.refImages) : S.images.map((i) => ({ src: i.thumb, name: i.name, corrected: !!i.gains })),
+      refImages: src ? structuredClone(src.refImages) : S.images.map((i) => ({ imageId: i.savedId, name: i.name, corrected: !!i.gains, gains: i.gains })),
       estimated: S.candidates.map((c) => ({ items: c.items, de: +c.de.toFixed(2) })),
       actual: S.mix.map((x) => ({ ...x })),
     };
@@ -508,6 +531,23 @@
 
   // ================= エントリ編集ダイアログ =================
   const dlg = $('#entry-dialog');
+
+  // サムネイル（押すと本画像を開く）。rm を渡すと削除ボタンを付ける
+  const thumbButton = (ref, rm) => Store.hasImage(ref.imageId)
+    ? `<span class="thumb-box"><button type="button" class="thumb-view" data-view="${ref.imageId}" data-name="${esc(ref.name)}" title="${esc(ref.name || '画像を開く')}"><img src="${Store.thumbUrl(ref.imageId)}" alt="${esc(ref.name)}"></button>${rm != null ? `<button type="button" class="thumb-x" data-rm-rec="${rm}" title="この記録画像を外す" aria-label="この記録画像を外す">×</button>` : ''}</span>`
+    : '';
+  const recThumbs = (list) => (list || []).map((r, i) => thumbButton(r, i)).join('') || '<div class="empty small">仕上がりの写真を追加できます</div>';
+
+  // 本画像を大きく表示する
+  const viewer = $('#image-dialog');
+  function openViewer(id, name) {
+    $('#image-view').src = Store.fullUrl(id);
+    $('#image-view').alt = name || '';
+    $('#image-name').textContent = name || '';
+    viewer.showModal();
+  }
+  $('#image-close').addEventListener('click', () => viewer.close());
+  viewer.addEventListener('click', (e) => { if (e.target === viewer) viewer.close(); });
 
   function openEditor(entry, opt = {}) {
     const e = entry;
@@ -562,9 +602,9 @@
           <span>抽出色</span><b>${e.extracted?.length ? e.extracted.map((h) => sw(h, 'sm') + `<span class="mono small">${h}</span>`).join(' ') : '—'}</b></div>
 
         <h3>参考画像</h3>
-        <div class="thumbs">${e.refImages?.length ? e.refImages.map((i) => `<img src="${i.src}" title="${esc(i.name)}">`).join('') : '<div class="empty small">なし</div>'}</div>
+        <div class="thumbs">${e.refImages?.length ? e.refImages.map((i) => thumbButton(i)).join('') : '<div class="empty small">なし</div>'}</div>
         <h3>記録画像 <label class="btn btn-ghost btn-s">追加<input type="file" accept="image/*" multiple hidden data-rec></label></h3>
-        <div class="thumbs" id="rec-thumbs">${(e.recordImages || []).map((i) => `<img src="${i.src}">`).join('') || '<div class="empty small">仕上がりの写真を追加できます</div>'}</div>
+        <div class="thumbs" id="rec-thumbs">${recThumbs(e.recordImages)}</div>
       </div>
       <div class="dlg-foot">
         ${!isNew && !opt.fromMix ? `<button type="button" class="link link-danger" data-act="delete">削除</button>
@@ -591,6 +631,13 @@
     form.onclick = async (ev) => {
       const b = ev.target.closest('button');
       if (!b) return;
+      if (b.dataset.rmRec != null) {
+        work.recordImages.splice(+b.dataset.rmRec, 1);
+        $('#rec-thumbs').innerHTML = recThumbs(work.recordImages);
+        markDirty();
+        return;
+      }
+      if (b.dataset.view) return openViewer(b.dataset.view, b.dataset.name);
       const st = b.closest('.stars-input');
       if (st) { work.rating = +b.dataset.v; $$('button', st).forEach((x) => x.classList.toggle('on', +x.dataset.v <= work.rating)); markDirty(); return; }
       const act = b.dataset.act;
@@ -618,10 +665,12 @@
     form.querySelector('[data-rec]').onchange = async (ev) => {
       work.recordImages = work.recordImages || [];
       for (const f of ev.target.files) {
-        const c = await fileToCanvas(f, 800);
-        work.recordImages.push({ src: canvasThumb(c, 320), name: f.name });
+        const id = await storeImage(await fileToCanvas(f, 1600), f.name);
+        if (!id) { toast(SAVE_FAILED); break; }
+        work.recordImages.push({ imageId: id, name: f.name });
       }
-      $('#rec-thumbs').innerHTML = work.recordImages.map((i) => `<img src="${i.src}">`).join('');
+      ev.target.value = '';
+      $('#rec-thumbs').innerHTML = recThumbs(work.recordImages);
       markDirty();
     };
 
@@ -676,7 +725,7 @@
     const part = e.part === 'カスタム' && e.customPart ? e.customPart : e.part;
     return `<button class="entry" data-id="${e.id}">
       <div class="entry-sw" style="background:${e.hex}">
-        ${e.recordImages?.[0] ? `<img src="${e.recordImages[0].src}" alt="">` : ''}
+        ${e.recordImages?.[0] && Store.hasImage(e.recordImages[0].imageId) ? `<img src="${Store.thumbUrl(e.recordImages[0].imageId)}" alt="">` : ''}
       </div>
       <div class="entry-body">
         <div class="entry-name">${esc(e.name)}</div>
@@ -883,12 +932,14 @@
   });
 
   // ================= 設定 =================
+  const fmtBytes = (n) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(1)} KB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
   async function renderSettings() {
     let persisted = '不明';
     try { persisted = (await navigator.storage?.persisted?.()) ? '許可済み' : '未許可'; } catch (e) { /* noop */ }
     $('#storage-info').innerHTML = `<span>カラーエントリ</span><b>${Store.entries().length} 件</b>
       <span>保存先</span><b>${Store.available ? 'この端末のブラウザ（IndexedDB）' : '一時的（画面を閉じると消えます）'}</b>
-      <span>使用容量</span><b>${(Store.sizeBytes() / 1024).toFixed(1)} KB</b>
+      <span>画像</span><b>${Store.imageCount()} 枚</b>
+      <span>使用容量</span><b>${fmtBytes(Store.sizeBytes())}</b>
       <span>永続保存</span><b>${persisted}</b>`;
   }
   $('#btn-persist').addEventListener('click', async () => {
@@ -898,25 +949,64 @@
     } catch (e) { toast('このブラウザは永続保存の要求に対応していません'); }
     renderSettings();
   });
-  $('#btn-export').addEventListener('click', () => {
-    const blob = new Blob([JSON.stringify({ app: 'doll-pigment-atelier', exportedAt: new Date().toISOString(), ...Store.db }, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `doll-pigment-atelier-backup-${new Date().toISOString().slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+  // ---- バックアップ（仕様書 6）----
+  // ZIP 1つに、data.json（ユーザーDB と画像の一覧）と images/ の画像（本画像とサムネイル）を入れる
+  const BACKUP_FORMAT = 2;
+  const extOf = (type) => (type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg');
+  $('#btn-export').addEventListener('click', async () => {
+    const btn = $('#btn-export');
+    btn.disabled = true;
+    try {
+      const imgs = Store.imageRecords();
+      const files = [];
+      const list = imgs.map((im) => {
+        const file = `images/${im.id}.${extOf(im.full.type)}`;
+        const thumbFile = im.thumb === im.full ? file : `images/${im.id}-thumb.${extOf(im.thumb.type)}`;
+        files.push({ name: file, data: im.full });
+        if (thumbFile !== file) files.push({ name: thumbFile, data: im.thumb });
+        return { id: im.id, name: im.name, type: im.type, w: im.w, h: im.h, file, thumbFile };
+      });
+      const { entries, owned, lastMedium } = Store.db;
+      const data = { app: 'doll-pigment-atelier', format: BACKUP_FORMAT, exportedAt: new Date().toISOString(), entries, owned, lastMedium, images: list };
+      files.unshift({ name: 'data.json', data: JSON.stringify(data, null, 2) });
+      const zip = await Zip.create(files);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(zip);
+      a.download = `doll-pigment-atelier-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 10000); // ダウンロードが始まるまで残す
+      toast(`カラー ${entries.length} 件と画像 ${imgs.length} 枚を書き出しました（${fmtBytes(zip.size)}）`);
+    } catch (err) {
+      console.warn(err);
+      toast('書き出せませんでした');
+    } finally { btn.disabled = false; }
   });
+  // ZIP（この版のバックアップ）と JSON（以前の版のバックアップ。画像はサムネイルだけ）を読み込める
+  async function readBackup(f) {
+    const isZip = /\.zip$/i.test(f.name) || f.type.includes('zip');
+    if (!isZip) return { data: JSON.parse(await f.text()), images: [] };
+    const files = await Zip.read(f);
+    const data = JSON.parse(await files.get('data.json').text());
+    const typed = (blob, type) => (blob && blob.type !== type ? new Blob([blob], { type }) : blob);
+    const images = (data.images || []).map((im) => {
+      const full = typed(files.get(im.file), im.type || 'image/jpeg');
+      const thumb = im.thumbFile === im.file ? full : typed(files.get(im.thumbFile), im.type || 'image/jpeg');
+      return full && thumb ? { id: im.id, name: im.name || '', type: full.type, w: im.w || 0, h: im.h || 0, full, thumb } : null;
+    }).filter(Boolean);
+    return { data, images };
+  }
   $('#import-input').addEventListener('change', async (e) => {
     const f = e.target.files[0];
     e.target.value = ''; // 同じファイルを選び直せるようにする
     if (!f) return;
-    let data;
+    let data, images;
     try {
-      data = JSON.parse(await f.text());
+      ({ data, images } = await readBackup(f));
       if (!Array.isArray(data.entries)) throw new Error('format');
-    } catch (err) { return toast('バックアップファイルを読み込めませんでした'); }
-    if (!confirm(`${data.entries.length} 件のカラーをインポートします。現在のデータは置き換わります。`)) return;
-    const ok = await Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], lastMedium: data.lastMedium });
+      if (data.format > BACKUP_FORMAT) return toast('新しい版のアプリで書き出したバックアップです。アプリを更新してから読み込んでください');
+    } catch (err) { console.warn(err); return toast('バックアップファイルを読み込めませんでした'); }
+    if (!confirm(`カラー ${data.entries.length} 件${images.length ? `と画像 ${images.length} 枚` : ''}をインポートします。現在のデータは置き換わります。`)) return;
+    const ok = await Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], lastMedium: data.lastMedium }, images);
     toast(ok ? 'インポートしました' : SAVE_FAILED);
     afterDataChange();
   });

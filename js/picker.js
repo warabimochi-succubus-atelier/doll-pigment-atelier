@@ -314,8 +314,8 @@ function drawableToCanvas(src, w, h, maxSide = 1200) {
   return c;
 }
 
-// File → 長辺 maxSide に縮めたキャンバス
-function fileToCanvas(file, maxSide = 1200) {
+// File → 長辺 maxSide に縮めたキャンバス（調色の画像は長辺 1600px。レシピ帳にはこの大きさで保存する）
+function fileToCanvas(file, maxSide = 1600) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const im = new Image();
@@ -327,6 +327,12 @@ function fileToCanvas(file, maxSide = 1200) {
     im.onerror = reject;
     im.src = url;
   });
+}
+
+// キャンバス → 長辺 maxSide に縮めた JPEG の Blob（保存用）
+function canvasToBlob(canvas, maxSide, quality = 0.9) {
+  const c = drawableToCanvas(canvas, canvas.width, canvas.height, maxSide);
+  return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob'))), 'image/jpeg', quality));
 }
 
 function canvasThumb(canvas, maxSide = 240) {
