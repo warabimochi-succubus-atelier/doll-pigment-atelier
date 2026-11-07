@@ -250,6 +250,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
   box-shadow: 0 6px 24px rgba(0,0,0,.2); max-width: calc(100% - 32px);
 }
 .toast[hidden] { display: none; }
+.update-bar {
+  display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
+  margin: 12px auto 0; max-width: 1200px; width: calc(100% - 32px);
+  padding: 10px 14px; border-radius: 12px; font-size: 13px;
+  background: var(--accent-2); color: var(--ink); border: 1px solid var(--accent);
+}
+.update-bar[hidden] { display: none; }
 
 /* ---- 調色：数値指定・近い色 ---- */
 .num-input { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
@@ -277,6 +284,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 /* ---- library ---- */
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
 .lib-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+.lib-grid > .empty { grid-column: 1 / -1; }
 .entry {
   display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden; cursor: pointer;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);

@@ -9,6 +9,7 @@
 
 ## 構成
 
-- ビルド不要の静的 PWA（HTML / CSS / JavaScript）。現在は画面モック。
+- ビルド不要の静的 PWA（HTML / CSS / JavaScript）。初期版（0.x。絵具の K・S は仮の値）。
 - 起動: `python -m http.server 8765` → http://localhost:8765/
-- ファイル構成とモックとしての割り切りは [README.md](README.md) を参照。
+- ファイル構成と現在の制限は [README.md](README.md) を参照。
+- 公開する変更では `js/version.js` の `APP_VERSION` を上げる（Service Worker のキャッシュ名に使う）。

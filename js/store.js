@@ -188,9 +188,9 @@ const Store = (() => {
         await collectGarbage();
         return { ok: true, migrated: false };
       }
-      // 初めての起動：以前の版のデータがあれば移し、なければサンプルデータで始める
+      // 初めての起動：以前の版のデータがあれば移し、なければ空のレシピ帳で始める（サンプルは設定やレシピ帳から追加できる）
       const legacy = readLegacy();
-      db = legacy ? migrate({ ...fresh([]), ...legacy, entries: byNewest(legacy.entries || []) }) : fresh(sample());
+      db = legacy ? migrate({ ...fresh([]), ...legacy, entries: byNewest(legacy.entries || []) }) : fresh([]);
       extractInlineImages(db.entries);
       const ok = await writeAll();
       if (ok && legacy) { try { localStorage.removeItem(LEGACY_KEY); } catch (e) { /* 消せなくても続ける */ } }
@@ -201,7 +201,7 @@ const Store = (() => {
       idb = null;
       images = new Map();
       const legacy = readLegacy();
-      db = legacy ? migrate({ ...fresh([]), ...legacy }) : fresh(sample());
+      db = legacy ? migrate({ ...fresh([]), ...legacy }) : fresh([]);
       extractInlineImages(db.entries);
       return { ok: false, migrated: false };
     }
@@ -280,7 +280,12 @@ const Store = (() => {
       [...images.keys()].filter((id) => !used.has(id)).forEach(forgetImage);
       return writeAll();
     },
-    resetSample() { [...images.keys()].forEach(forgetImage); db = { ...fresh(sample()), owned: db.owned }; return writeAll(); },
+    // サンプルのカラー（6件）を追加する。今のカラーは消さない
+    addSamples() {
+      const list = sample().map((e) => ({ ...e, name: `${e.name}（サンプル）` })); // 自分のカラーと見分けられるようにする
+      db.entries = byNewest([...list, ...db.entries]);
+      return write('entries', (s) => list.forEach((e) => s.entries.put(e)));
+    },
     wipe() { [...images.keys()].forEach(forgetImage); db = fresh([]); return writeAll(); },
     // このアプリのデータの大きさ（バイト。github.io のドメインは他のアプリと共有するので、ブラウザ全体の使用量ではなく自分の分を数える）
     sizeBytes: () => new Blob([JSON.stringify(db)]).size

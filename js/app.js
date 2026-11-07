@@ -822,10 +822,13 @@
     list = list.sort(sort === 'rating' ? (a, b) => b.rating - a.rating || b.createdAt - a.createdAt
       : sort === 'name' ? (a, b) => a.name.localeCompare(b.name, 'ja') : (a, b) => b.createdAt - a.createdAt);
     $('#lib-grid').innerHTML = list.length ? list.map((e) => entryCard(e)).join('')
-      : '<div class="card empty">該当するカラーはありません</div>';
+      : Store.entries().length ? '<div class="card empty">該当するカラーはありません</div>'
+        : `<div class="card empty">まだカラーがありません。調色の画面で色を決めて「レシピ帳に保存」すると、ここに並びます。
+          <div class="sample-try"><button class="btn btn-ghost btn-s" data-add-sample>サンプルのカラーを追加して試す</button></div></div>`;
     renderSimilar(); // レシピ帳が変わったら、調色画面の「近い色」も更新する
   }
   $('#lib-grid').addEventListener('click', (ev) => {
+    if (ev.target.closest('[data-add-sample]')) return addSamples();
     const c = ev.target.closest('.entry');
     if (c) openEditor(Store.get(c.dataset.id));
   });
@@ -1086,12 +1089,13 @@
   function afterDataChange() {
     renderLibrary(); renderCandidates(); renderMix(); scheduleReverse(); renderSettings();
   }
-  $('#btn-reset-sample').addEventListener('click', async () => {
-    if (!confirm('サンプルデータに戻します。現在のデータは消えます。')) return;
-    const ok = await Store.resetSample();
-    toast(ok ? 'サンプルデータに戻しました' : SAVE_FAILED);
+  // サンプルのカラーを追加する（今のカラーは消さない。不要になったら1件ずつ削除できる）
+  async function addSamples() {
+    const ok = await Store.addSamples();
+    toast(ok ? 'サンプルのカラーを6件追加しました（名称の後ろに「サンプル」と付いています）' : SAVE_FAILED);
     afterDataChange();
-  });
+  }
+  $('#btn-add-sample').addEventListener('click', addSamples);
   $('#btn-wipe').addEventListener('click', async () => {
     if (!confirm('すべてのカラーエントリを削除します。元に戻せません。')) return;
     const ok = await Store.wipe();
@@ -1111,7 +1115,37 @@
   route();
   if (!boot.ok) toast('このブラウザでは端末に保存できないため、画面を閉じるとデータが消えます（プライベートブラウズでは保存できません）');
   else if (boot.migrated) toast('以前の版のデータを、新しい保存先（IndexedDB）に移しました');
+  // ---------------- 版と更新 ----------------
+  $$('[data-app-version]').forEach((el) => (el.textContent = `v${APP_VERSION}`));
+  // 新しい版の Service Worker が待機したら案内を出し、「更新する」で切り替えて読み込み直す
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
+    const bar = $('#update-bar');
+    let waiting = null, reloading = false;
+    const offer = (w) => { waiting = w; bar.hidden = false; };
+    $('#update-now').addEventListener('click', () => {
+      if (!waiting) return location.reload();
+      $('#update-now').disabled = true;
+      waiting.postMessage('skipWaiting');
+    });
+    $('#update-later').addEventListener('click', () => (bar.hidden = true));
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading || !waiting) return; // 初めて入ったときは読み込み直さない
+      reloading = true;
+      location.reload();
+    });
+    // 版は sw.js が読み込む js/version.js にあるので、更新の確認ではブラウザのキャッシュを使わない（既定では読み込むファイルにキャッシュが使われ、版を上げても気づけないことがある）
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then((reg) => {
+      if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
+      reg.addEventListener('updatefound', () => {
+        const w = reg.installing;
+        w?.addEventListener('statechange', () => {
+          if (w.state === 'installed' && navigator.serviceWorker.controller) offer(w);
+        });
+      });
+      // 開きっぱなしのとき（ホーム画面から起動した場合など）も、画面に戻ったときに新しい版を確かめる
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update().catch(() => {});
+      });
+    }).catch(() => {});
   }
 })();
