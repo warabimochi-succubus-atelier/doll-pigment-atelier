@@ -71,14 +71,32 @@ const PaintDB = (() => {
     COMPS.push(out);
   }
 
+  // 組み合わせ set の中で、目標に最も近い割合を探す（探索の中心なので、配列を作らずに計算する）
+  // K/S は重みの合計で割っても変わらないので、割合は整数のまま使う。比較は ΔE76 の2乗で行う
+  const labF = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const KM_R = (K, S) => { const ks = K / S; return 1 + ks - Math.sqrt(ks * ks + 2 * ks); };
   function bestForSet(set, targetLab) {
-    let best = null;
-    for (const comp of COMPS[set.length]) {
-      const lab = Color.linearToLab(mixLinear(set, comp));
-      const d = Color.dE76(lab, targetLab);
-      if (!best || d < best.d) best = { set, comp, d };
+    const comps = COMPS[set.length], n = set.length;
+    const [tL, ta, tb] = targetLab;
+    let bestI = 0, bestD = Infinity;
+    for (let ci = 0; ci < comps.length; ci++) {
+      const comp = comps[ci];
+      let K0 = 0, K1 = 0, K2 = 0, S0 = 0, S1 = 0, S2 = 0;
+      for (let i = 0; i < n; i++) {
+        const w = comp[i], p = set[i];
+        K0 += w * p.K[0]; K1 += w * p.K[1]; K2 += w * p.K[2];
+        S0 += w * p.S[0]; S1 += w * p.S[1]; S2 += w * p.S[2];
+      }
+      const r = KM_R(K0, S0), g = KM_R(K1, S1), b = KM_R(K2, S2);
+      // 線形 RGB → Lab（Color.linearToLab と同じ式）
+      const fx = labF((0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047);
+      const fy = labF(0.2126729 * r + 0.7151522 * g + 0.072175 * b);
+      const fz = labF((0.0193339 * r + 0.119192 * g + 0.9503041 * b) / 1.08883);
+      const dL = 116 * fy - 16 - tL, da = 500 * (fx - fy) - ta, db = 200 * (fy - fz) - tb;
+      const d = dL * dL + da * da + db * db;
+      if (d < bestD) { bestD = d; bestI = ci; }
     }
-    return best;
+    return { set, comp: comps[bestI], d: Math.sqrt(bestD) };
   }
 
   function finalize(r, targetLab) {

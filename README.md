@@ -48,6 +48,7 @@ css/style.css         スタイル（ライト / ダーク、スマホ下部タ�
 js/color.js           sRGB / 線形 / Lab 変換、CIEDE2000
 js/paints-data.js     標準DB のデータ（リキテックス レギュラー・ソフト・ベーシックス 307色：品番・色名・仮の色・透明度・系統・販売中止）
 js/km.js              Kubelka-Munk 混色、逆引き調色、絵具置換
+js/reverse-worker.js  逆引き調色を画面とは別のスレッド（Web Worker）で計算する
 js/store.js           ユーザーDB（IndexedDB。カラーエントリ・設定・画像）とサンプルデータ
 js/zip.js             バックアップ用の ZIP の書き出しと読み込み
 js/picker.js          画像の範囲選択

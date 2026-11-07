@@ -346,16 +346,82 @@
   // （カラーピッカーを動かしている間や、抽出色を続けて取っている間は計算しない）
   const REVERSE_DELAY = 300;
   let reverseTimer = null;
+  let pendingKey = null; // 計算中の「代表色＋所持絵具」
+
+  // 計算は Web Worker で行い、画面を固めない（所持している絵具が多いと時間がかかるため）
+  // 新しい計算を始めるときは、古い計算を Worker ごと止める。Worker を使えないとき（index.html を直接開いた場合など）は画面側で計算する
+  const Reverser = (() => {
+    let worker = null, failed = false, seq = 0, waiting = null; // waiting: { id, args, resolve }
+    const runHere = ({ rgb, ids, top }) => {
+      const t0 = performance.now();
+      const cands = PaintDB.reverse(rgb, ids, top);
+      return { cands, ms: performance.now() - t0 };
+    };
+    function fallback() {
+      failed = true;
+      worker?.terminate();
+      worker = null;
+      const w = waiting;
+      waiting = null;
+      if (w) w.resolve(runHere(w.args));
+    }
+    function ensure() {
+      if (worker || failed) return worker;
+      try {
+        worker = new Worker('js/reverse-worker.js');
+        worker.onmessage = (e) => {
+          if (waiting?.id !== e.data.id) return;
+          const w = waiting;
+          waiting = null;
+          w.resolve({ cands: e.data.cands, ms: e.data.ms });
+        };
+        worker.onerror = (e) => { e.preventDefault?.(); fallback(); };
+      } catch (e) { failed = true; worker = null; }
+      return worker;
+    }
+    // 計算中のものがあれば止めて、結果は null にする
+    function cancel() {
+      if (!waiting) return;
+      waiting.resolve(null);
+      waiting = null;
+      worker?.terminate();
+      worker = null;
+    }
+    function run(rgb, ids, top = 3) {
+      cancel();
+      const args = { rgb, ids, top };
+      if (!ensure()) return Promise.resolve(runHere(args));
+      return new Promise((resolve) => {
+        waiting = { id: ++seq, args, resolve };
+        worker.postMessage({ id: waiting.id, ...args });
+      });
+    }
+    ensure(); // 最初の計算を待たせないよう、起動時に読み込んでおく
+    return { run, cancel, get inWorker() { return !!worker; } };
+  })();
   // いま表示している候補が、どの「代表色＋所持絵具」で計算したものか
   function candKeyNow() {
     const rgb = representative();
     if (!rgb) return null;
     return `${Color.toHex(rgb)}|${owned().filter((id) => PaintDB.byId[id].mixable).join(',')}`;
   }
+  // 計算の予定と計算中のものをやめる（呼び出し・絵具置換で候補を直接決めたとき）
+  function stopReverse() {
+    clearTimeout(reverseTimer);
+    Reverser.cancel();
+    pendingKey = null;
+  }
   function scheduleReverse() {
     clearTimeout(reverseTimer);
     const key = candKeyNow();
-    if (key === S.candKey) return; // 変わっていなければ計算し直さない
+    if (key === pendingKey) return; // 同じ内容をすでに計算中
+    if (key === S.candKey) {
+      // 変わっていない（いったん変えて元に戻した場合を含む）：計算し直さず、表示中の候補を使う
+      if (pendingKey) { Reverser.cancel(); pendingKey = null; renderCandidates(); }
+      return;
+    }
+    Reverser.cancel();
+    pendingKey = null;
     if (!key || !mixableOwnedCount()) {
       S.candidates = [];
       S.candKey = key;
@@ -363,13 +429,17 @@
       return;
     }
     $('#candidates').innerHTML = '<div class="empty">計算中…</div>';
-    reverseTimer = setTimeout(() => {
+    reverseTimer = setTimeout(async () => {
       const rgb = representative();
       if (!rgb) return;
-      const t0 = performance.now();
-      S.candidates = PaintDB.reverse(rgb, owned(), 3);
-      S.candTime = performance.now() - t0;
-      S.candKey = candKeyNow();
+      pendingKey = key;
+      const res = await Reverser.run(rgb, owned(), 3);
+      if (pendingKey !== key) return; // 計算中に代表色か所持が変わった（新しい計算が始まっている）
+      pendingKey = null;
+      if (!res) return;
+      S.candidates = res.cands;
+      S.candTime = res.ms;
+      S.candKey = key;
       renderCandidates();
     }, REVERSE_DELAY);
   }
@@ -424,6 +494,7 @@
       const res = PaintDB.substitute(S.candidates[i], pid, representative(), owned());
       if (!res) return toast('代替できる絵具がありません');
       S.candidates[i] = res;
+      stopReverse();
       S.candKey = candKeyNow(); // 未所持にした分で計算し直さず、置き換えた候補を残す
       renderCandidates();
       toast(`${paintName(pid)} を「未所持」にしました（絵具箱で戻せます）`);
@@ -773,6 +844,7 @@
       candTime: null,
       recalled: e.id,
     });
+    stopReverse(); // 計算中の候補で、呼び出した候補を上書きしない
     S.candKey = candKeyNow();
     const b = $('#recall-banner');
     b.innerHTML = `${sw(e.hex)} <span>「<b>${esc(e.name)}</b>」の調色を呼び出しました。下の絵具と割合を微調整して、上書き保存するか、別のカラーとしてレシピ帳に追加できます。</span><button class="icon-btn" id="btn-unrecall" title="呼び出しをやめる">×</button>`;
