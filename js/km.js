@@ -1,50 +1,35 @@
-// 標準DB（リキテックス）と Kubelka-Munk による混色・逆引き調色
-// ※モック: K・S は実測ではなく、マストーン色と着色力から RGB 3チャンネルで近似した仮の値
+// 標準DB（リキテックス レギュラー）と Kubelka-Munk による混色・逆引き調色
+// ※モック: K・S は実測ではなく、仮の色（チャートの色見本の平均色）と仮の着色力から RGB 3チャンネルで近似した値
 const PaintDB = (() => {
-  // [id, 名称, マストーンHEX, 着色力（K・S の倍率。白 = 1）]
-  const RAW = [
-    ['titanium-white', 'Titanium White', '#F5F4F0', 1.0],
-    ['unbleached-titanium', 'Unbleached Titanium', '#E3D3B6', 1.0],
-    ['light-portrait-pink', 'Light Portrait Pink', '#F2B8A4', 1.0],
-    ['cad-yellow-med-hue', 'Cadmium Yellow Medium Hue', '#F0B000', 0.56],
-    ['yellow-ochre', 'Yellow Ochre', '#BE8A30', 0.48],
-    ['raw-sienna', 'Raw Sienna', '#A6652B', 0.48],
-    ['pyrrole-orange', 'Pyrrole Orange', '#DF561E', 0.64],
-    ['cad-red-med-hue', 'Cadmium Red Medium Hue', '#C4252C', 0.64],
-    ['naphthol-crimson', 'Naphthol Crimson', '#A81D34', 0.72],
-    ['quinacridone-magenta', 'Quinacridone Magenta', '#8C1F50', 0.8],
-    ['burnt-sienna', 'Burnt Sienna', '#86391F', 0.52],
-    ['burnt-umber', 'Burnt Umber', '#4A2E22', 0.6],
-    ['raw-umber', 'Raw Umber', '#4B3E2F', 0.6],
-    ['dioxazine-purple', 'Dioxazine Purple', '#3B1F50', 1.2],
-    ['ultramarine-blue', 'Ultramarine Blue (Green Shade)', '#24317C', 0.64],
-    ['cerulean-blue-hue', 'Cerulean Blue Hue', '#2B70A8', 0.64],
-    ['phthalo-blue', 'Phthalocyanine Blue (Green Shade)', '#103A6A', 1.6],
-    ['hookers-green', "Hooker's Green Hue Permanent", '#2E4B2B', 0.8],
-    ['mars-black', 'Mars Black', '#1E1D1D', 1.2],
-  ];
+  const OPACITY = { opaque: '不透明', semi: '半透明', transparent: '透明' };
 
-  const paints = RAW.map(([id, name, hex, strength]) => {
+  const paints = PAINT_DATA.map(([id, no, name, hex, opacity, group, strength]) => {
     const rgb = Color.parseHex(hex);
     const R = Color.rgbToLinear(rgb).map((r) => Math.min(0.97, Math.max(0.035, r)));
     const ks = R.map((r) => ((1 - r) * (1 - r)) / (2 * r));
     const S = [strength, strength, strength];
     const K = ks.map((v) => v * strength);
-    return { id, name, hex, rgb, lab: Color.rgbToLab(rgb), K, S, strength };
+    // メタリック・蛍光・イリディッセントは混色計算で表せないので、逆引き調色に使わない
+    const mixable = group !== 'special';
+    // label は画面表示用（品番＋色名）
+    return { id, no, name, label: `${no} ${name}`, hex, rgb, lab: Color.rgbToLab(rgb), K, S, strength, opacity, group, mixable };
   });
   const byId = Object.fromEntries(paints.map((p) => [p.id, p]));
 
   // 制作条件で選ぶメディウム（混色計算には含めない）
   const mediums = [
-    { id: 'matte-medium', name: 'Matte Medium' },
-    { id: 'gloss-medium', name: 'Gloss Medium' },
-    { id: 'glazing-medium', name: 'Glazing Medium' },
-    { id: 'slow-dri-blending', name: 'Slow-Dri Blending Medium' },
-    { id: 'flow-aid', name: 'Flow-Aid' },
-    { id: 'water', name: '水' },
+    { id: 'painting-medium', name: 'ペインティング メディウム' },
+    { id: 'gradation-medium', name: 'グラデーション メディウム' },
+    { id: 'slow-dri-blending', name: 'スロードライ ブレンディング メディウム' },
     { id: 'none', name: 'なし' },
   ];
   const mediumById = Object.fromEntries(mediums.map((m) => [m.id, m]));
+
+  const WHITE_ID = 'lq101'; // チタニウムホワイト（白との混色見本に使う）
+  // サンプルデータの調色記録を作るときに使う12色
+  // ナフソールレッドライト、ナフソールクリムソン、ビビッドレッドオレンジ、イエローミディアムアゾ、パーマネントグリーンライト、
+  // フタロシアニングリーン、フタロシアニンブルー、ウルトラマリンブルー、ディオキサジンパープル、バーントシェンナ、マースブラック、チタニウムホワイト
+  const STARTER_IDS = ['lq013', 'lq016', 'lq025', 'lq029', 'lq040', 'lq043', 'lq067', 'lq068', 'lq074', 'lq081', 'lq095', 'lq101'];
 
   // 重量比 weights（任意スケール）で混色した線形反射率
   function mixLinear(list, weights) {
@@ -98,15 +83,33 @@ const PaintDB = (() => {
   }
 
   // 逆引き調色：使える絵具の中から最大4色・5%刻みで候補を探す
+  // 手持ちが多いときは、2色の組み合わせで有望な絵具に絞ってから3色・4色を探す（計算時間を抑えるため）
+  const MAX_POOL = 18;
   function reverse(targetRgb, availableIds, top = 3) {
     const targetLab = Color.rgbToLab(targetRgb);
-    const pool = availableIds.map((id) => byId[id]).filter(Boolean);
+    let pool = availableIds.map((id) => byId[id]).filter((p) => p && p.mixable);
     const found = [];
+    const pairBest = new Map(pool.map((p) => [p, Infinity]));
+    for (let i = 0; i < pool.length; i++) {
+      const one = bestForSet([pool[i]], targetLab);
+      found.push(one);
+      pairBest.set(pool[i], Math.min(pairBest.get(pool[i]), one.d));
+      for (let j = i + 1; j < pool.length; j++) {
+        const two = bestForSet([pool[i], pool[j]], targetLab);
+        found.push(two);
+        pairBest.set(pool[i], Math.min(pairBest.get(pool[i]), two.d));
+        pairBest.set(pool[j], Math.min(pairBest.get(pool[j]), two.d));
+      }
+    }
+    if (pool.length > MAX_POOL) {
+      pool = [...pool].sort((a, b) => pairBest.get(a) - pairBest.get(b)).slice(0, MAX_POOL);
+      // 白は明るさの調整に使うので、持っていれば必ず残す
+      const white = byId[WHITE_ID];
+      if (availableIds.includes(WHITE_ID) && !pool.includes(white)) pool[pool.length - 1] = white;
+    }
     const n = pool.length;
     for (let i = 0; i < n; i++) {
-      found.push(bestForSet([pool[i]], targetLab));
       for (let j = i + 1; j < n; j++) {
-        found.push(bestForSet([pool[i], pool[j]], targetLab));
         for (let k = j + 1; k < n; k++) found.push(bestForSet([pool[i], pool[j], pool[k]], targetLab));
       }
     }
@@ -141,6 +144,7 @@ const PaintDB = (() => {
     const alt = availableIds
       .filter((id) => !used.has(id) && id !== paintId)
       .map((id) => byId[id])
+      .filter((p) => p && p.mixable)
       .sort((a, b) => Color.dE00(a.lab, from.lab) - Color.dE00(b.lab, from.lab))[0];
     if (!alt) return null;
     const set = candidate.items.map((x) => (x.paintId === paintId ? alt : byId[x.paintId]));
@@ -158,5 +162,5 @@ const PaintDB = (() => {
     return out;
   }
 
-  return { paints, byId, mediums, mediumById, mixRgb, reverse, substitute, evaluate };
+  return { paints, byId, OPACITY, WHITE_ID, STARTER_IDS, mediums, mediumById, mixRgb, reverse, substitute, evaluate };
 })();

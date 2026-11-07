@@ -4,8 +4,9 @@
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const stars = (n) => '★'.repeat(n) + '<span class="off">' + '★'.repeat(5 - n) + '</span>';
-  const paintName = (id) => PaintDB.byId[id]?.name || id;
+  const paintName = (id) => PaintDB.byId[id]?.label || id; // 品番＋色名
   const sw = (hex, cls = '') => `<span class="sw ${cls}" style="background:${hex}"></span>`;
+  const mixableOwnedCount = () => PaintDB.paints.filter((p) => p.mixable && Store.isOwned(p.id)).length;
   const owned = () => PaintDB.paints.map((p) => p.id).filter(Store.isOwned);
 
   function toast(msg) {
@@ -24,6 +25,7 @@
     fixed: null,       // 画像を使わない代表色 { rgb, from: 'recall' | 'input', label }（レシピ帳からの呼び出し・数値指定）
     similarAll: false, // レシピ帳の近い色をすべて表示するか
     candidates: [],
+    candKey: null,     // 表示中の調色候補を計算した「代表色＋所持絵具」（変わったら自動で計算し直す）
     mix: [],           // [{ paintId, pct }]
     recalled: null,    // 呼び出し元エントリ id
   };
@@ -34,6 +36,7 @@
     if (!$('#view-' + tab)) tab = 'mix'; // 存在しないタブは調色を表示
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab));
     $$('#tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
+    if (tab === 'mix') { renderCandidates(); renderMix(); scheduleReverse(); } // 絵具箱で所持を変えたときに反映する
     if (tab === 'library') renderLibrary();
     if (tab === 'paints') renderPaints();
     if (tab === 'settings') renderSettings();
@@ -65,6 +68,12 @@
     overlays: () => S.extracted
       .filter((x) => x.imgId === S.active)
       .map((x) => ({ rect: x.rect, label: x.label, color: Color.toHex(x.rgb) })),
+    onZoom(z) {
+      $('#zoom-val').textContent = `${Math.round(z * 100)}%`;
+      $('#zoom-out').disabled = z <= Picker.MIN_ZOOM;
+      $('#zoom-in').disabled = z >= Picker.MAX_ZOOM;
+      picker.draw(); // 枠線の太さを表示倍率に合わせる
+    },
   });
   const curImg = () => S.images.find((i) => i.id === S.active);
 
@@ -85,9 +94,10 @@
     const img = curImg();
     $('#img-tools').hidden = !img;
     if (!img) {
-      $('#img-stage').innerHTML = `<div class="empty">画像を追加してください（正面・斜め・自然光・室内光など複数枚可）
+      picker.setImage(null);
+      setPanMode(false);
+      $('#img-stage').innerHTML = `<div class="empty">画像を追加するか、カメラで撮影してください（正面・斜め・自然光・室内光など複数枚可）
         <div class="sample-try"><button class="link" data-sample>サンプル画像で試してみる</button></div></div>`;
-      picker.img = null;
       return;
     }
     if (picker.img !== img) picker.setImage(img); else picker.draw();
@@ -116,16 +126,106 @@
     if (!e.target.closest('[data-sample]')) return;
     addImage(makeSampleCanvas('natural'), 'サンプル（自然光）');
     addImage(makeSampleCanvas('warm'), 'サンプル（室内光）');
-    toast('サンプル画像を2枚追加しました。チークをドラッグしてみてください');
+    toast(`サンプル画像を2枚追加しました。チークを${isTouch ? 'タップ' : 'ドラッグ'}してみてください`);
   });
 
+  // ---- 操作モード（範囲選択 / 移動 / グレーカード補正）----
+  const isTouch = matchMedia('(pointer: coarse)').matches;
+  function updateHint() {
+    $('#img-hint').textContent = isTouch
+      ? (picker.grayMode
+        ? 'グレーカードの部分をタップするか、長押ししてから囲んでください'
+        : 'タップで色を取得。長押ししてから指を動かすと範囲で選べます（2本指で拡大）')
+      : (picker.grayMode ? 'グレーカードの部分をドラッグしてください'
+        : picker.panMode ? 'ドラッグで画像を動かします'
+          : 'ドラッグで範囲を選択 → 色を取得（拡大：Ctrl＋ホイール）');
+  }
+  // スマホ・タブレットでは1本指のスワイプで画像を動かせるので、「移動」ボタンは出さない
+  $('#btn-pan').hidden = isTouch;
   function setGrayMode(on) {
+    if (on) setPanMode(false);
     picker.grayMode = on;
     $('#btn-gray').classList.toggle('on', on);
-    $('#img-hint').textContent = on ? 'グレーカードの部分をドラッグしてください' : 'ドラッグで範囲を選択 → 色を取得';
     $('#img-stage').classList.toggle('gray-mode', on);
+    updateHint();
+  }
+  function setPanMode(on) {
+    if (on && picker.grayMode) setGrayMode(false);
+    picker.setPanMode(on);
+    $('#btn-pan').classList.toggle('on', on);
+    $('#btn-pan').setAttribute('aria-pressed', on);
+    updateHint();
   }
   $('#btn-gray').addEventListener('click', () => setGrayMode(!picker.grayMode));
+  $('#btn-pan').addEventListener('click', () => setPanMode(!picker.panMode));
+  $('#zoom-in').addEventListener('click', () => picker.zoomBy(1.5));
+  $('#zoom-out').addEventListener('click', () => picker.zoomBy(1 / 1.5));
+  $('#zoom-fit').addEventListener('click', () => picker.fit());
+  updateHint();
+
+  // ---- カメラで撮影 ----
+  // スマホ：端末のカメラアプリ（capture 属性つきの input）で撮影する
+  // PC など：アプリ内でカメラ映像を表示して撮影する。使えなければファイル選択に切り替える
+  const camDlg = $('#camera-dialog');
+  const camVideo = $('#cam-video');
+  let camStream = null, camFacing = 'environment';
+  const shotName = () => `撮影 ${new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
+
+  function stopCamera() {
+    camStream?.getTracks().forEach((t) => t.stop());
+    camStream = null;
+    camVideo.srcObject = null;
+  }
+  async function startCamera() {
+    stopCamera();
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: camFacing, width: { ideal: 1920 }, height: { ideal: 1080 } },
+      audio: false,
+    });
+    camVideo.srcObject = camStream;
+    await camVideo.play().catch(() => {});
+    const cams = (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput');
+    $('#cam-switch').hidden = cams.length < 2;
+  }
+  async function openCamera() {
+    if (isTouch || !navigator.mediaDevices?.getUserMedia) {
+      $('#cam-input').click();
+      return;
+    }
+    try {
+      await startCamera();
+      camDlg.showModal();
+    } catch (err) {
+      stopCamera();
+      toast(err?.name === 'NotAllowedError'
+        ? 'カメラの使用が許可されていません。ブラウザの設定でカメラを許可してください'
+        : 'カメラが見つかりませんでした。画像を追加から写真を選んでください');
+    }
+  }
+  $('#btn-camera').addEventListener('click', openCamera);
+  $('#cam-input').addEventListener('change', async (e) => {
+    const f = e.target.files[0];
+    if (f) addImage(await fileToCanvas(f), shotName());
+    e.target.value = '';
+  });
+  $('#cam-shoot').addEventListener('click', () => {
+    const w = camVideo.videoWidth, h = camVideo.videoHeight;
+    if (!w || !h) return toast('カメラの準備ができていません。少し待ってから撮影してください');
+    addImage(drawableToCanvas(camVideo, w, h), shotName());
+    closeCamera();
+    toast('撮影した写真を追加しました');
+  });
+  $('#cam-switch').addEventListener('click', async () => {
+    camFacing = camFacing === 'environment' ? 'user' : 'environment';
+    try { await startCamera(); } catch { toast('カメラを切り替えられませんでした'); }
+  });
+  // 閉じたらすぐカメラを止める（Esc で閉じたときは close イベントで止める）
+  function closeCamera() {
+    stopCamera();
+    if (camDlg.open) camDlg.close();
+  }
+  $('#cam-cancel').addEventListener('click', closeCamera);
+  camDlg.addEventListener('close', stopCamera);
 
   // ---- 抽出色と代表色 ----
   // 抽出色の平均（線形空間で平均してから sRGB に戻す）
@@ -224,21 +324,41 @@
     $('#target').innerHTML = targetCard(rgb, note);
     renderSimilar();
     renderMix();
+    scheduleReverse();
   }
 
-  // ---- 逆引き調色 ----
-  function runReverse() {
+  // ---- 逆引き調色（自動）----
+  // 代表色か所持している絵具が変わったら、変化が止まってから少し待って計算する
+  // （カラーピッカーを動かしている間や、抽出色を続けて取っている間は計算しない）
+  const REVERSE_DELAY = 300;
+  let reverseTimer = null;
+  // いま表示している候補が、どの「代表色＋所持絵具」で計算したものか
+  function candKeyNow() {
     const rgb = representative();
-    if (!rgb) return toast('先に代表色を決めてください');
+    if (!rgb) return null;
+    return `${Color.toHex(rgb)}|${owned().filter((id) => PaintDB.byId[id].mixable).join(',')}`;
+  }
+  function scheduleReverse() {
+    clearTimeout(reverseTimer);
+    const key = candKeyNow();
+    if (key === S.candKey) return; // 変わっていなければ計算し直さない
+    if (!key || !mixableOwnedCount()) {
+      S.candidates = [];
+      S.candKey = key;
+      renderCandidates();
+      return;
+    }
     $('#candidates').innerHTML = '<div class="empty">計算中…</div>';
-    setTimeout(() => {
+    reverseTimer = setTimeout(() => {
+      const rgb = representative();
+      if (!rgb) return;
       const t0 = performance.now();
       S.candidates = PaintDB.reverse(rgb, owned(), 3);
       S.candTime = performance.now() - t0;
+      S.candKey = candKeyNow();
       renderCandidates();
-    }, 20);
+    }, REVERSE_DELAY);
   }
-  $('#btn-reverse').addEventListener('click', runReverse);
 
   function deBadge(de) {
     const cls = de < 2 ? 'good' : de < 5 ? 'ok' : 'bad';
@@ -249,7 +369,9 @@
   function renderCandidates() {
     const rgb = representative();
     if (!S.candidates.length) {
-      $('#candidates').innerHTML = '<div class="empty">代表色を決めて「逆引き調色」を実行してください</div>';
+      $('#candidates').innerHTML = mixableOwnedCount()
+        ? '<div class="empty">代表色が決まると、自動で調色候補を計算します</div>'
+        : '<div class="empty">調色候補は、持っている絵具だけで計算します。<br>先に絵具箱で、持っている絵具を選んでください。<div class="sample-try"><a class="btn btn-ghost btn-s" href="#paints">絵具箱を開く</a></div></div>';
       return;
     }
     $('#candidates').innerHTML = S.candidates.map((c, i) => `
@@ -270,7 +392,7 @@
         </div>
       </div>`).join('') + (S.candTime == null
         ? '<div class="hint small">呼び出したカラーに保存されていた候補です</div>'
-        : `<div class="hint small">計算 ${S.candTime.toFixed(0)} ms ・ 所持絵具 ${owned().length} 色から探索</div>`);
+        : `<div class="hint small">所持している ${mixableOwnedCount()} 色から計算しました（${S.candTime.toFixed(0)} ms）</div>`);
   }
 
   $('#candidates').addEventListener('click', (e) => {
@@ -288,14 +410,21 @@
       const res = PaintDB.substitute(S.candidates[i], pid, representative(), owned());
       if (!res) return toast('代替できる絵具がありません');
       S.candidates[i] = res;
+      S.candKey = candKeyNow(); // 未所持にした分で計算し直さず、置き換えた候補を残す
       renderCandidates();
       toast(`${paintName(pid)} を「未所持」にしました（絵具箱で戻せます）`);
     }
   });
 
   // ---- 手動調整 ----
-  const paintOptions = (sel) => PaintDB.paints.map((p) =>
-    `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.name)}${Store.isOwned(p.id) ? '' : '（未所持）'}</option>`).join('');
+  // 所持している絵具を先に並べる
+  const paintOptions = (sel) => {
+    const opt = (p) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.label)}</option>`;
+    const own = PaintDB.paints.filter((p) => Store.isOwned(p.id));
+    const rest = PaintDB.paints.filter((p) => !Store.isOwned(p.id));
+    return (own.length ? `<optgroup label="所持している絵具">${own.map(opt).join('')}</optgroup>` : '')
+      + `<optgroup label="${own.length ? 'そのほかの絵具' : 'すべての絵具'}">${rest.map(opt).join('')}</optgroup>`;
+  };
 
   function renderMix() {
     const rows = $('#mix-rows');
@@ -339,7 +468,8 @@
   });
   $('#btn-add-row').addEventListener('click', () => {
     if (S.mix.length >= 6) return toast('絵具は6色までにしましょう');
-    S.mix.push({ paintId: S.mix.length ? 'titanium-white' : 'titanium-white', pct: S.mix.length ? 5 : 100 });
+    const first = Store.isOwned(PaintDB.WHITE_ID) ? PaintDB.WHITE_ID : (Store.ownedIds()[0] || PaintDB.WHITE_ID);
+    S.mix.push({ paintId: first, pct: S.mix.length ? 5 : 100 });
     renderMix();
   });
   $('#btn-clear-mix').addEventListener('click', () => { S.mix = []; renderMix(); });
@@ -425,35 +555,49 @@
         <div class="thumbs" id="rec-thumbs">${(e.recordImages || []).map((i) => `<img src="${i.src}">`).join('') || '<div class="empty small">仕上がりの写真を追加できます</div>'}</div>
       </div>
       <div class="dlg-foot">
-        ${!isNew && !opt.fromMix ? `<button type="button" class="btn btn-danger" data-act="delete">削除</button>
+        ${!isNew && !opt.fromMix ? `<button type="button" class="link link-danger" data-act="delete">削除</button>
           <span class="grow"></span>
-          <button type="button" class="btn btn-ghost" data-act="dup">複製</button>
-          <button type="button" class="btn btn-ghost" data-act="recall">呼び出して調色 →</button>
-          <button type="submit" class="btn btn-primary" data-act="save">保存</button>`
+          <button type="submit" class="btn btn-ghost" data-act="save" disabled title="書き換えた内容をレシピ帳に保存します">変更を保存</button>
+          <button type="button" class="btn btn-primary" data-act="recall" title="このレシピを調色の画面に読み込みます">調色に呼び出す →</button>`
         : `<span class="grow"></span>
-          ${opt.baseId ? '<button type="submit" class="btn btn-ghost" data-act="overwrite">呼び出し元に上書き</button>' : ''}
-          <button type="submit" class="btn btn-primary" data-act="new">新しいカラーとして保存</button>`}
+          ${opt.baseId ? '<button type="submit" class="btn btn-ghost" data-act="overwrite" title="レシピ帳の呼び出し元のカラーを更新します">上書き保存</button>' : ''}
+          <button type="submit" class="btn btn-primary" data-act="new" ${opt.baseId ? 'title="呼び出し元を残して、別のカラーとしてレシピ帳に追加します"' : ''}>${opt.baseId ? 'レシピ帳に追加' : 'レシピ帳に保存'}</button>`}
       </div>`;
 
     const form = $('#entry-form');
     const work = structuredClone(e);
+    // 書き換えたら「変更を保存」を押せるようにする
+    let dirty = false;
+    const markDirty = () => {
+      dirty = true;
+      const b = form.querySelector('[data-act=save]');
+      if (b) b.disabled = false;
+    };
+    form.oninput = markDirty;
+    form.onchange = markDirty;
 
     form.onclick = (ev) => {
       const b = ev.target.closest('button');
       if (!b) return;
       const st = b.closest('.stars-input');
-      if (st) { work.rating = +b.dataset.v; $$('button', st).forEach((x) => x.classList.toggle('on', +x.dataset.v <= work.rating)); return; }
+      if (st) { work.rating = +b.dataset.v; $$('button', st).forEach((x) => x.classList.toggle('on', +x.dataset.v <= work.rating)); markDirty(); return; }
       const act = b.dataset.act;
       if (act === 'close') { ev.preventDefault(); dlg.close(); }
       if (act === 'delete') {
         if (!confirm(`「${e.name}」を削除します。よろしいですか？`)) return;
         Store.remove(e.id); dlg.close(); renderLibrary(); toast('削除しました');
       }
-      if (act === 'dup') {
-        const copy = { ...collect(), id: Store.uid(), createdAt: Date.now(), name: e.name + '（コピー）' };
-        Store.upsert(copy); dlg.close(); renderLibrary(); toast('複製しました');
+      if (act === 'recall') {
+        // 書き換えてあれば、先に保存してから呼び出す
+        if (dirty) {
+          const data = collect();
+          if (!data.name) return toast('名称を入力してください');
+          if (!saveEntry(data)) return;
+          toast('変更を保存しました');
+        }
+        dlg.close();
+        recall(e.id);
       }
-      if (act === 'recall') { dlg.close(); recall(e.id); }
     };
     form.querySelector('[name=part]').onchange = (ev) => {
       form.querySelector('.custom-part').hidden = ev.target.value !== 'カスタム';
@@ -465,6 +609,7 @@
         work.recordImages.push({ src: canvasThumb(c, 320), name: f.name });
       }
       $('#rec-thumbs').innerHTML = work.recordImages.map((i) => `<img src="${i.src}">`).join('');
+      markDirty();
     };
 
     function collect() {
@@ -479,6 +624,14 @@
       };
     }
 
+    function saveEntry(data) {
+      const ok = Store.upsert(data);
+      Store.setLastMedium(data.cond.medium);
+      if (!ok) { toast('保存容量が不足しています（画像を減らしてください）'); return false; }
+      renderLibrary();
+      return true;
+    }
+
     form.onsubmit = (ev) => {
       ev.preventDefault();
       const act = ev.submitter?.dataset.act;
@@ -486,13 +639,12 @@
       if (!data.name) return toast('名称を入力してください');
       if (act === 'overwrite') { data.id = opt.baseId; data.createdAt = Store.get(opt.baseId)?.createdAt || Date.now(); }
       else if (act === 'new') { data.id = Store.uid(); data.createdAt = Date.now(); }
-      const ok = Store.upsert(data);
-      Store.setLastMedium(data.cond.medium);
       dlg.close();
-      if (!ok) return toast('保存容量が不足しています（画像を減らしてください）');
-      toast(`「${data.name}」を保存しました`);
+      if (!saveEntry(data)) return;
+      toast(act === 'overwrite' ? `レシピ帳の「${data.name}」を上書き保存しました`
+        : act === 'new' ? `「${data.name}」をレシピ帳に${opt.baseId ? '追加' : '保存'}しました`
+          : `「${data.name}」の変更を保存しました`);
       if (opt.fromMix) S.recalled = data.id;
-      renderLibrary();
     };
 
     dlg.showModal();
@@ -545,13 +697,26 @@
       candTime: null,
       recalled: e.id,
     });
+    S.candKey = candKeyNow();
     const b = $('#recall-banner');
-    b.innerHTML = `${sw(e.hex)} <span>「<b>${esc(e.name)}</b>」を呼び出しました。微調整して、上書き保存か新しいカラーとして保存できます。</span><button class="icon-btn" id="btn-unrecall">×</button>`;
+    b.innerHTML = `${sw(e.hex)} <span>「<b>${esc(e.name)}</b>」の調色を呼び出しました。下の絵具と割合を微調整して、上書き保存するか、別のカラーとしてレシピ帳に追加できます。</span><button class="icon-btn" id="btn-unrecall" title="呼び出しをやめる">×</button>`;
     b.hidden = false;
     $('#btn-unrecall').onclick = () => { S.recalled = null; b.hidden = true; };
     renderImages(); renderExtracted(); renderCandidates(); renderMix();
-    if (location.hash !== '#mix') location.hash = '#mix';
-    else b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 呼び出した内容が入る「4 実際の調色」までスクロールし、一瞬強調する
+    const showMixCard = () => {
+      const card = $('#mix-card');
+      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      card.classList.remove('flash');
+      void card.offsetWidth; // アニメーションをやり直す
+      card.classList.add('flash');
+    };
+    if (location.hash !== '#mix') {
+      location.hash = '#mix'; // タブ切り替え（先頭へのスクロール）のあとで移動する
+      setTimeout(showMixCard, 60);
+    } else {
+      showMixCard();
+    }
   }
 
   // ================= 数値で指定（手順1） =================
@@ -562,15 +727,36 @@
     const m = String(text).match(/\d+/g);
     return m && m.length === 3 && m.every((v) => +v <= 255) ? m.map(Number) : null;
   }
+  function setInputColor(rgb, label) {
+    S.fixed = { rgb, from: 'input', label };
+    renderExtracted();
+  }
   function useNumber() {
     const rgb = parseColorText($('#num-input').value);
     if (!rgb) return toast('HEX（#D98C8C）または RGB（217, 140, 140）で入力してください');
-    S.fixed = { rgb, from: 'input', label: '数値で指定した色' };
-    renderExtracted();
+    $('#num-color').value = Color.toHex(rgb).toLowerCase();
+    setInputColor(rgb, '数値で指定した色');
     toast('数値で指定した色を代表色にしました');
   }
   $('#btn-num').addEventListener('click', useNumber);
   $('#num-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') useNumber(); });
+  // 正しい数値が入力されたら、カラーピッカーの色も合わせる
+  $('#num-input').addEventListener('input', (e) => {
+    const rgb = parseColorText(e.target.value);
+    if (rgb) $('#num-color').value = Color.toHex(rgb).toLowerCase();
+  });
+  // カラーピッカー：選んでいる間も代表色に反映し、確定したときに知らせる
+  const fromPicker = (e) => {
+    const rgb = Color.parseHex(e.target.value);
+    $('#num-input').value = Color.toHex(rgb);
+    setInputColor(rgb, 'カラーピッカーで指定した色');
+    return rgb;
+  };
+  $('#num-color').addEventListener('input', fromPicker);
+  $('#num-color').addEventListener('change', (e) => {
+    fromPicker(e);
+    toast('カラーピッカーで指定した色を代表色にしました');
+  });
 
   // ================= レシピ帳の近い色（手順3） =================
   function renderSimilar() {
@@ -616,24 +802,46 @@
   });
 
   // ================= 絵具箱 =================
+  const PF = { ownedOnly: false, q: '' }; // 絵具箱の絞り込み
+
+  // 品番（「8」でも「008」でも可。前方一致）または色名の一部で探す。空白は無視する
+  function matchPaint(p, q) {
+    if (!q) return true;
+    if (/^\d+$/.test(q)) return Number(p.no) === Number(q) || p.no.startsWith(q);
+    return p.name.replace(/\s/g, '').includes(q);
+  }
+  function shownPaints() {
+    const q = PF.q.replace(/[\s　]/g, '').replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFEE0));
+    return PaintDB.paints.filter((p) => matchPaint(p, q) && (!PF.ownedOnly || Store.isOwned(p.id)));
+  }
   function renderPaints() {
-    const W = PaintDB.byId['titanium-white'];
-    $('#paint-rows').innerHTML = PaintDB.paints.map((p) => {
-      const ladder = p === W ? [[1, 0]] : [[1, 0], [1, 1], [1, 4], [1, 10]];
-      const ks = p.K.map((k, i) => (k / p.S[i]).toFixed(2)).join(', ');
-      return `<tr class="${Store.isOwned(p.id) ? '' : 'unowned'}">
-        <td><input type="checkbox" data-own="${p.id}" ${Store.isOwned(p.id) ? 'checked' : ''}></td>
-        <td><div class="pcell">${sw(p.hex)}<span>${esc(p.name)}</span></div></td>
-        <td><div class="ladder">${ladder.map(([a, w]) => {
+    const W = PaintDB.byId[PaintDB.WHITE_ID];
+    $('#owned-count').textContent = `所持 ${Store.ownedIds().length} 色`;
+    const list = shownPaints();
+    $('#paint-rows').innerHTML = list.length ? list.map((p) => {
+      const owned = Store.isOwned(p.id);
+      const ladder = !p.mixable ? [] : p === W ? [[1, 0]] : [[1, 0], [1, 1], [1, 4], [1, 10]];
+      return `<tr class="${owned ? '' : 'unowned'}">
+        <td><input type="checkbox" data-own="${p.id}" ${owned ? 'checked' : ''} aria-label="${esc(p.name)}を所持"></td>
+        <td><div class="pcell">${sw(p.hex)}<span><span class="pno mono">${p.no}</span>${esc(p.name)}</span></div>
+          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div></td>
+        <td>${p.mixable ? `<div class="ladder">${ladder.map(([a, w]) => {
           const hex = w ? Color.toHex(PaintDB.mixRgb([p, W], [a, w])) : p.hex;
           return `<span style="background:${hex}" title="${w ? `1:${w}` : '絵具のみ'} ${hex}"><small>${w ? `1:${w}` : '原色'}</small></span>`;
-        }).join('')}</div></td>
-        <td class="num mono small">${ks}</td></tr>`;
-    }).join('');
+        }).join('')}</div>` : '<span class="hint">—</span>'}</td></tr>`;
+    }).join('') : '<tr><td colspan="3" class="empty small">該当する絵具はありません</td></tr>';
   }
   $('#paint-rows').addEventListener('change', (e) => {
     const id = e.target.dataset.own;
     if (id) { Store.setOwned(id, e.target.checked); renderPaints(); }
+  });
+  $('#paint-owned-only').addEventListener('change', (e) => { PF.ownedOnly = e.target.checked; renderPaints(); });
+  $('#paint-q').addEventListener('input', (e) => { PF.q = e.target.value; renderPaints(); });
+  $('#btn-unown-shown').addEventListener('click', () => {
+    const ids = shownPaints().map((p) => p.id);
+    if (ids.length > 10 && !confirm(`表示中の${ids.length}色の所持を解除します。よろしいですか？`)) return;
+    Store.setOwnedMany(ids, false);
+    renderPaints();
   });
 
   // ================= 設定 =================
@@ -666,7 +874,7 @@
       const data = JSON.parse(await f.text());
       if (!Array.isArray(data.entries)) throw new Error('format');
       if (!confirm(`${data.entries.length} 件のカラーをインポートします。現在のデータは置き換わります。`)) return;
-      Store.replaceAll({ version: 1, entries: data.entries, unowned: data.unowned || [], lastMedium: data.lastMedium });
+      Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], lastMedium: data.lastMedium });
       toast('インポートしました');
       renderSettings();
     } catch (err) { toast('バックアップファイルを読み込めませんでした'); }

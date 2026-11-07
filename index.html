@@ -35,23 +35,38 @@
   <main>
     <!-- ========== 調色 ========== -->
     <section id="view-mix" class="view">
-      <div id="recall-banner" class="banner" hidden></div>
 
       <div class="grid-2">
         <div class="card">
           <div class="card-head">
             <h2><span class="step">1</span>目標の色を取る</h2>
-            <label class="btn btn-ghost">画像を追加<input type="file" id="img-input" accept="image/*" multiple hidden></label>
+            <div class="row gap-s">
+              <label class="btn btn-ghost">画像を追加<input type="file" id="img-input" accept="image/*" multiple hidden></label>
+              <button class="btn btn-ghost" id="btn-camera">
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+                カメラで撮影
+              </button>
+              <!-- スマホでは端末のカメラアプリで撮影する -->
+              <input type="file" id="cam-input" accept="image/*" capture="environment" hidden>
+            </div>
           </div>
           <div id="img-strip" class="img-strip"></div>
           <div id="img-stage" class="img-stage"></div>
           <div id="img-tools" class="img-tools" hidden>
+            <div class="zoom-tools" role="group" aria-label="表示の拡大">
+              <button class="icon-btn" id="zoom-out" title="縮小" aria-label="縮小">−</button>
+              <span class="mono" id="zoom-val">100%</span>
+              <button class="icon-btn" id="zoom-in" title="拡大" aria-label="拡大">＋</button>
+              <button class="btn btn-ghost btn-s" id="zoom-fit" title="画像全体を表示">全体</button>
+            </div>
+            <button class="btn btn-ghost btn-s" id="btn-pan" aria-pressed="false" title="ドラッグで画像を動かす">移動</button>
             <button class="btn btn-ghost btn-s" id="btn-gray">グレーカード補正</button>
-            <span class="hint" id="img-hint">ドラッグで範囲を選択 → 色を取得</span>
+            <span class="hint" id="img-hint"></span>
           </div>
           <div class="num-input">
-            <label for="num-input">または色を数値で指定（HEX / RGB）</label>
+            <label for="num-input">または色を直接指定（HEX / RGB、カラーピッカー）</label>
             <div class="row gap-s">
+              <input type="color" id="num-color" value="#d98c8c" title="カラーピッカーで色を選ぶ" aria-label="カラーピッカーで色を選ぶ">
               <input id="num-input" class="mono grow" placeholder="#D98C8C または 217, 140, 140" spellcheck="false">
               <button class="btn btn-ghost btn-s" id="btn-num">この色を使う</button>
             </div>
@@ -64,7 +79,6 @@
           <div id="extracted" class="chips"></div>
           <p class="method-hint" id="method-hint" hidden></p>
           <div id="target" class="target"></div>
-          <button class="btn btn-primary btn-block" id="btn-reverse">逆引き調色で候補を出す</button>
         </div>
       </div>
 
@@ -86,11 +100,13 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="mix-card">
         <div class="card-head">
           <h2><span class="step">4</span>実際の調色（手動調整）</h2>
           <button class="btn btn-ghost btn-s" id="btn-add-row">＋ 絵具を追加</button>
         </div>
+        <!-- レシピ帳から呼び出したときの案内（呼び出した調色はここに入る） -->
+        <div id="recall-banner" class="banner" hidden></div>
         <div class="mix-wrap">
           <div>
             <div class="sub">絵具（合計 100%）</div>
@@ -131,21 +147,29 @@
     <section id="view-paints" class="view">
       <div class="card">
         <div class="card-head">
-          <h2>収録絵具：リキテックス</h2>
-          <span class="badge">編集不可</span>
+          <h2>リキテックス レギュラー（122色）</h2>
+          <span class="badge" id="owned-count"></span>
         </div>
-        <p class="hint">「所持」を外した絵具は逆引き調色に使われません。白との混色見本（絵具のみ / 1:1 / 1:4 / 1:10）は K・S から計算した予測です。</p>
-        <div class="table-wrap">
+        <p class="hint">持っている絵具に「所持」のチェックを入れてください。逆引き調色は、所持している絵具だけで候補を出します。白との混色見本（絵具のみ / 1:1 / 1:4 / 1:10）は予測の色です。</p>
+        <div class="paint-filters card-block">
+          <input type="search" id="paint-q" placeholder="品番・色名で検索（例：008、ナフソール）" aria-label="品番・色名で検索">
+          <div class="row gap-s wrap between">
+            <label class="check"><input type="checkbox" id="paint-owned-only">所持のみ表示</label>
+            <button class="btn btn-ghost btn-s" id="btn-unown-shown">表示中をすべて解除</button>
+          </div>
+        </div>
+        <div class="table-wrap card-block">
           <table class="paints">
-            <thead><tr><th>所持</th><th>絵具</th><th>白との混色見本</th><th class="num">K/S (R, G, B)</th></tr></thead>
+            <thead><tr><th>所持</th><th>絵具</th><th>白との混色見本</th></tr></thead>
             <tbody id="paint-rows"></tbody>
           </table>
         </div>
+        <p class="hint card-block">出典：リキテックス レギュラー カラーチャート（2026年5月版）の色名と透明度。色見本はチャートから取った仮の色で、実際の色とは異なります。</p>
       </div>
       <div class="card muted-card">
         <div class="card-head"><h2>ユーザー絵具の登録</h2><span class="badge badge-future">将来機能</span></div>
         <ol class="steps">
-          <li>絵具を Titanium White と重量比で混ぜ、見本を作る（絵具のみ / 1:1 / 1:4 / 1:10）</li>
+          <li>絵具をチタニウムホワイトと重量比で混ぜ、見本を作る（絵具のみ / 1:1 / 1:4 / 1:10）</li>
           <li>グレーカードと一緒に、同じ照明で一度に撮影する</li>
           <li class="auto">補正・反射率変換・K/S 計算・最小二乗フィットはアプリが自動で行う</li>
         </ol>
@@ -158,16 +182,16 @@
       <div class="card">
         <div class="card-head"><h2>バックアップ</h2></div>
         <p class="hint">レシピ帳と絵具箱の設定を一括でエクスポート・インポートします（モックでは JSON ファイル）。</p>
-        <div class="row gap-s wrap">
+        <div class="row gap-s wrap card-actions">
           <button class="btn btn-primary" id="btn-export">エクスポート</button>
           <label class="btn btn-ghost">インポート<input type="file" id="import-input" accept="application/json" hidden></label>
         </div>
       </div>
       <div class="card">
         <div class="card-head"><h2>データ保存</h2></div>
-        <p class="hint">データは端末内だけに保存し、サーバーには送信しません。他人の作品画像は個人の参考用で、アプリから公開・共有しません。</p>
-        <div class="kv" id="storage-info"></div>
-        <div class="row gap-s wrap">
+        <p class="hint">データは端末内だけに保存し、サーバーには送信しません。参考画像と記録画像は個人の参考用で、アプリから公開・共有しません。</p>
+        <div class="kv card-block" id="storage-info"></div>
+        <div class="row gap-s wrap card-actions">
           <button class="btn btn-ghost" id="btn-persist">永続保存を要求</button>
           <button class="btn btn-ghost" id="btn-reset-sample">サンプルデータに戻す</button>
           <button class="btn btn-danger" id="btn-wipe">すべて削除</button>
@@ -177,10 +201,10 @@
         <div class="card-head"><h2>このモックについて</h2></div>
         <ul class="plain">
           <li>仕様書「Doll Pigment Atelier」初期バージョン必須機能の画面モックです。</li>
-          <li>絵具の K・S はマストーン色からの仮の近似値で、実測値ではありません。</li>
+          <li>絵具の色と K・S は、カラーチャートの色見本から取った仮の値で、実測値ではありません。</li>
           <li>保存はブラウザの localStorage（本実装では IndexedDB）を使っています。</li>
         </ul>
-        <div class="row gap-s wrap" style="margin-top:12px">
+        <div class="row gap-s wrap card-actions">
           <button class="btn btn-ghost" data-open-about>このアプリについて</button>
         </div>
       </div>
@@ -190,6 +214,20 @@
   <!-- 保存 / 詳細ダイアログ -->
   <dialog id="entry-dialog" class="dialog">
     <form method="dialog" id="entry-form"></form>
+  </dialog>
+
+  <!-- カメラで撮影（PC など） -->
+  <dialog id="camera-dialog" class="dialog camera" aria-label="カメラで撮影">
+    <div class="cam-body">
+      <video id="cam-video" playsinline muted autoplay></video>
+      <p class="hint">グレーカードを一緒に写しておくと、あとで色を補正できます。</p>
+    </div>
+    <div class="dlg-foot">
+      <button class="btn btn-ghost" id="cam-switch" hidden>カメラ切り替え</button>
+      <span class="grow"></span>
+      <button class="btn btn-ghost" id="cam-cancel">キャンセル</button>
+      <button class="btn btn-primary" id="cam-shoot">撮影</button>
+    </div>
   </dialog>
 
   <!-- このアプリについて -->
@@ -228,6 +266,7 @@
   <div id="toast" class="toast" hidden></div>
 
   <script src="js/color.js"></script>
+  <script src="js/paints-data.js"></script>
   <script src="js/km.js"></script>
   <script src="js/store.js"></script>
   <script src="js/picker.js"></script>
