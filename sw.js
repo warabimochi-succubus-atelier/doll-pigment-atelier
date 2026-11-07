@@ -1,5 +1,5 @@
 // オフライン用の簡易 Service Worker（ネットワーク優先・オフライン時はキャッシュ）
-const CACHE = 'dpa-mock-v4';
+const CACHE = 'dpa-mock-v10';
 const ASSETS = [
   './', './index.html', './css/style.css', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/favicon-32.png', './icons/apple-touch-icon.png',

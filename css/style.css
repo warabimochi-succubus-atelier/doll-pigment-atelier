@@ -156,16 +156,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; align-items: center; }
 .kv > span { color: var(--ink-2); font-size: 12px; }
 .kv > b { font-weight: 500; }
-/* 代表色の決め方 */
-.choices { display: flex; flex-wrap: wrap; gap: 6px; }
-.choices button {
-  border: 1px solid var(--line); background: var(--surface); border-radius: 999px;
-  padding: 6px 14px; cursor: pointer; font-size: 13px;
-}
-.choices button:hover { border-color: var(--accent); }
-.choices button.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.method-hint { margin: 8px 0 0; font-size: 12px; color: var(--ink-2); background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
+/* 代表色 */
+.method-hint { margin: 10px 0 0; font-size: 12px; color: var(--ink-2); background: var(--surface-2); border-radius: 8px; padding: 6px 10px; }
 .chips.dim { opacity: .45; }
+.chip.outlier { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, var(--surface)); }
+.chip .flag { display: block; font-style: normal; font-size: 10px; color: var(--ok); font-weight: 600; }
 .chip .chip-x { border: 0; background: none; cursor: pointer; font-size: 13px; line-height: 1; }
 
 /* ---- candidates ---- */
@@ -196,11 +191,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .mix-row { display: grid; grid-template-columns: 18px 1fr 80px 16px 24px; gap: 8px; align-items: center; }
 .mix-row input { text-align: right; }
 .unit { color: var(--ink-2); }
-.medium-head { margin: 16px 0 6px; }
-.medium-head .sub { margin: 0; }
-.medium-row .ratio { grid-column: 2 / -1; font-size: 11px; color: var(--ink-2); margin-top: -4px; }
-.medium-sw { background: repeating-linear-gradient(45deg, var(--surface-2) 0 3px, var(--line) 3px 6px); }
-small.ratio { color: var(--ink-2); font-weight: 400; }
 
 /* ---- banner / toast ---- */
 .banner {
@@ -216,18 +206,31 @@ small.ratio { color: var(--ink-2); font-weight: 400; }
 }
 .toast[hidden] { display: none; }
 
+/* ---- 調色：数値指定・近い色 ---- */
+.num-input { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line); }
+.num-input label { display: block; font-size: 12px; color: var(--ink-2); margin-bottom: 6px; }
+.result-sec + .result-sec { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+.result-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.result-head h3 { margin: 0; color: var(--ink); font-size: 14px; }
+.similar { display: grid; gap: 6px; }
+.sim-row { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 12px; }
+.sim-main { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; border: 0; background: none; padding: 0; text-align: left; cursor: pointer; }
+.sim-main:hover .sim-name { color: var(--accent); }
+.sim-sw { width: 40px; height: 40px; border-radius: 9px; border: 1px solid rgba(0,0,0,.1); flex: none; }
+.sim-body { display: grid; min-width: 0; }
+.sim-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sim-meta { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+.sim-more { justify-self: start; margin-top: 2px; }
+
 /* ---- library ---- */
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
-.lib-grid, .list { display: grid; gap: 12px; }
-.lib-grid { grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
+.lib-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); }
 .entry {
   display: flex; flex-direction: column; text-align: left; padding: 0; overflow: hidden; cursor: pointer;
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow);
 }
 .entry:hover { border-color: var(--accent); }
-.list .entry { flex-direction: row; box-shadow: none; }
 .entry-sw { height: 84px; position: relative; }
-.list .entry-sw { width: 72px; height: auto; flex: none; }
 .entry-sw img { position: absolute; right: 8px; bottom: 8px; width: 48px; height: 48px; object-fit: cover; border-radius: 8px; border: 2px solid #fff; }
 .entry-body { padding: 10px 12px 12px; display: grid; gap: 2px; flex: 1; min-width: 0; }
 .entry-name { font-weight: 700; }
@@ -303,6 +306,10 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
   .grid-2, .mix-wrap { grid-template-columns: 1fr; }
 }
 @media (max-width: 680px) {
+  .sim-row { flex-wrap: wrap; }
+  .sim-main { flex-basis: 100%; }
+  .sim-row .de { margin-left: 50px; }
+  .sim-row .btn { margin-left: auto; }
   .topbar { padding: 8px 16px; padding-top: max(8px, env(safe-area-inset-top)); backdrop-filter: none; background: var(--bg); }
   .tabs {
     position: fixed; left: 0; right: 0; bottom: 0; justify-content: space-around; gap: 0;

@@ -34,14 +34,15 @@ const PaintDB = (() => {
   });
   const byId = Object.fromEntries(paints.map((p) => [p.id, p]));
 
-  // 調色記録で選べるメディウム（初期版は混色計算に含めない）
+  // 制作条件で選ぶメディウム（混色計算には含めない）
   const mediums = [
-    { id: 'water', name: '水' },
     { id: 'matte-medium', name: 'Matte Medium' },
     { id: 'gloss-medium', name: 'Gloss Medium' },
     { id: 'glazing-medium', name: 'Glazing Medium' },
     { id: 'slow-dri-blending', name: 'Slow-Dri Blending Medium' },
     { id: 'flow-aid', name: 'Flow-Aid' },
+    { id: 'water', name: '水' },
+    { id: 'none', name: 'なし' },
   ];
   const mediumById = Object.fromEntries(mediums.map((m) => [m.id, m]));
 

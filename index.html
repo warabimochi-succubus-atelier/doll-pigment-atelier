@@ -22,10 +22,9 @@
       </div>
     </div>
     <nav class="tabs" id="tabs">
-      <a href="#mix" data-tab="mix">新規調色</a>
-      <a href="#find" data-tab="find">再現・検索</a>
-      <a href="#library" data-tab="library">色ライブラリ</a>
-      <a href="#paints" data-tab="paints">絵具DB</a>
+      <a href="#mix" data-tab="mix">調色</a>
+      <a href="#library" data-tab="library">レシピ帳</a>
+      <a href="#paints" data-tab="paints">絵具箱</a>
       <a href="#settings" data-tab="settings">設定</a>
     </nav>
     <button class="about-btn" id="btn-about" title="このアプリについて" aria-label="このアプリについて">
@@ -34,14 +33,14 @@
   </header>
 
   <main>
-    <!-- ========== 新規調色 ========== -->
+    <!-- ========== 調色 ========== -->
     <section id="view-mix" class="view">
       <div id="recall-banner" class="banner" hidden></div>
 
       <div class="grid-2">
         <div class="card">
           <div class="card-head">
-            <h2><span class="step">1</span>参考画像</h2>
+            <h2><span class="step">1</span>目標の色を取る</h2>
             <label class="btn btn-ghost">画像を追加<input type="file" id="img-input" accept="image/*" multiple hidden></label>
           </div>
           <div id="img-strip" class="img-strip"></div>
@@ -50,31 +49,41 @@
             <button class="btn btn-ghost btn-s" id="btn-gray">グレーカード補正</button>
             <span class="hint" id="img-hint">ドラッグで範囲を選択 → 色を取得</span>
           </div>
+          <div class="num-input">
+            <label for="num-input">または色を数値で指定（HEX / RGB）</label>
+            <div class="row gap-s">
+              <input id="num-input" class="mono grow" placeholder="#D98C8C または 217, 140, 140" spellcheck="false">
+              <button class="btn btn-ghost btn-s" id="btn-num">この色を使う</button>
+            </div>
+          </div>
         </div>
 
         <div class="card">
           <div class="card-head"><h2><span class="step">2</span>代表色を決める</h2></div>
           <div class="sub">抽出色</div>
           <div id="extracted" class="chips"></div>
-          <div class="field">
-            <label>代表色の決め方</label>
-            <div class="choices" id="method" role="radiogroup" aria-label="代表色の決め方">
-              <button role="radio" data-v="average">平均色</button>
-              <button role="radio" data-v="median">中央値</button>
-            </div>
-            <p class="method-hint" id="method-hint"></p>
-          </div>
+          <p class="method-hint" id="method-hint" hidden></p>
           <div id="target" class="target"></div>
           <button class="btn btn-primary btn-block" id="btn-reverse">逆引き調色で候補を出す</button>
         </div>
       </div>
 
       <div class="card">
-        <div class="card-head">
-          <h2><span class="step">3</span>調色候補</h2>
-          <span class="hint">重量比・最大4色・5%刻み / Kubelka-Munk（RGB近似）</span>
+        <div class="card-head"><h2><span class="step">3</span>近い色と調色候補</h2></div>
+        <div class="result-sec">
+          <div class="result-head">
+            <h3>レシピ帳の近い色</h3>
+            <span class="hint">ΔE2000 の小さい順（同じなら高評価を優先）</span>
+          </div>
+          <div id="similar" class="similar"></div>
         </div>
-        <div id="candidates" class="cands"><div class="empty">代表色を決めて「逆引き調色」を実行してください</div></div>
+        <div class="result-sec">
+          <div class="result-head">
+            <h3>調色候補（逆引き）</h3>
+            <span class="hint">重量比・最大4色・5%刻み / Kubelka-Munk（RGB近似）</span>
+          </div>
+          <div id="candidates" class="cands"></div>
+        </div>
       </div>
 
       <div class="card">
@@ -86,51 +95,17 @@
           <div>
             <div class="sub">絵具（合計 100%）</div>
             <div id="mix-rows" class="mix-rows"></div>
-            <div class="row between medium-head">
-              <div class="sub">メディウム（水を含む・絵具の合計重量に対する割合）</div>
-              <button class="btn btn-ghost btn-s" id="btn-add-medium">＋ メディウムを追加</button>
-            </div>
-            <div id="medium-rows" class="mix-rows"></div>
           </div>
           <div class="mix-preview" id="mix-preview"></div>
         </div>
         <div class="row end gap-s">
           <button class="btn btn-ghost" id="btn-clear-mix">クリア</button>
-          <button class="btn btn-primary" id="btn-save">ライブラリに保存…</button>
+          <button class="btn btn-primary" id="btn-save">レシピ帳に保存…</button>
         </div>
       </div>
     </section>
 
-    <!-- ========== 再現・検索 ========== -->
-    <section id="view-find" class="view">
-      <div class="grid-2">
-        <div class="card">
-          <div class="card-head">
-            <h2>写真から探す</h2>
-            <label class="btn btn-ghost">過去作品の写真<input type="file" id="find-img" accept="image/*" hidden></label>
-          </div>
-          <div id="find-stage" class="img-stage small"><div class="empty">過去作品の写真を読み込み、探したい部分をドラッグ</div></div>
-          <div class="field">
-            <label for="find-hex">または色を数値で指定（HEX または RGB）</label>
-            <div class="row gap-s">
-              <input id="find-hex" class="mono w-m" placeholder="#D98C8C" spellcheck="false">
-              <button class="btn btn-ghost btn-s" id="btn-find-hex">検索</button>
-            </div>
-          </div>
-          <div id="find-target" class="target"></div>
-        </div>
-        <div class="card">
-          <div class="card-head">
-            <h2>類似色の検索結果</h2>
-            <span class="hint">ΔE2000 の小さい順 → 同差なら高評価優先</span>
-          </div>
-          <div id="find-results" class="list"><div class="empty">色を指定すると、ライブラリから近い色を探します</div></div>
-          <button class="btn btn-ghost btn-block" id="btn-find-to-mix" hidden>この色で調色候補を計算する →</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- ========== 色ライブラリ ========== -->
+    <!-- ========== レシピ帳 ========== -->
     <section id="view-library" class="view">
       <div class="card">
         <div class="filters">
@@ -152,11 +127,11 @@
       <div id="lib-grid" class="lib-grid"></div>
     </section>
 
-    <!-- ========== 絵具DB ========== -->
+    <!-- ========== 絵具箱 ========== -->
     <section id="view-paints" class="view">
       <div class="card">
         <div class="card-head">
-          <h2>標準DB：リキテックス</h2>
+          <h2>収録絵具：リキテックス</h2>
           <span class="badge">編集不可</span>
         </div>
         <p class="hint">「所持」を外した絵具は逆引き調色に使われません。白との混色見本（絵具のみ / 1:1 / 1:4 / 1:10）は K・S から計算した予測です。</p>
@@ -182,7 +157,7 @@
     <section id="view-settings" class="view">
       <div class="card">
         <div class="card-head"><h2>バックアップ</h2></div>
-        <p class="hint">ユーザーDB と画像を一括でエクスポート・インポートします（モックでは JSON ファイル）。</p>
+        <p class="hint">レシピ帳と絵具箱の設定を一括でエクスポート・インポートします（モックでは JSON ファイル）。</p>
         <div class="row gap-s wrap">
           <button class="btn btn-primary" id="btn-export">エクスポート</button>
           <label class="btn btn-ghost">インポート<input type="file" id="import-input" accept="application/json" hidden></label>
