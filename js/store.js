@@ -57,6 +57,84 @@ const Store = (() => {
     }
     return d;
   }
+  // ---------------- 読み込んだデータの確認 ----------------
+  // バックアップや以前の版のデータは外から来るので、形をそろえ、画面に出す値を安全なものだけにする
+  // （HEX は正しい色だけ、id は英数字だけ、など。画面では一部の値をそのまま HTML に入れているため）
+  const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  const str = (v, max = 2000) => (typeof v === 'string' ? v.slice(0, max) : '');
+  const num = (v, lo, hi, def) => (Number.isFinite(+v) && v !== null && v !== '' ? Math.min(hi, Math.max(lo, +v)) : def);
+  const oneOf = (v, list, def) => (list.includes(v) ? v : def);
+  const hexOf = (v) => { const rgb = Color.parseHex(v); return rgb ? Color.toHex(rgb) : null; };
+  function cleanItems(items) {
+    return (Array.isArray(items) ? items : [])
+      .filter((x) => x && PaintDB.byId[x.paintId])
+      .map((x) => ({ paintId: x.paintId, pct: num(x.pct, 0, 100, 0) }));
+  }
+  function cleanRefs(refs) {
+    return (Array.isArray(refs) ? refs : []).filter((r) => r && typeof r === 'object').map((r) => {
+      const out = { name: str(r.name, 200) };
+      if (ID_RE.test(r.imageId)) out.imageId = r.imageId;
+      else if (typeof r.src === 'string' && r.src.startsWith('data:image/')) out.src = r.src; // 以前の版のサムネイル（あとで画像に取り出す）
+      else return null;
+      if ('corrected' in r) out.corrected = !!r.corrected;
+      if (Array.isArray(r.gains) && r.gains.length === 3 && r.gains.every((g) => Number.isFinite(g) && g > 0)) out.gains = r.gains.map(Number);
+      else if ('gains' in r) out.gains = null;
+      return out;
+    }).filter(Boolean);
+  }
+  // 1件のカラーエントリをそろえる。色（HEX）が読めないものは null
+  function cleanEntry(e) {
+    if (!e || typeof e !== 'object') return null;
+    const hex = hexOf(e.hex);
+    if (!hex) return null;
+    const c = e.cond && typeof e.cond === 'object' ? e.cond : {};
+    return {
+      id: ID_RE.test(e.id) ? e.id : uid(),
+      name: str(e.name, 200).trim() || '（名称なし）',
+      // 知らない部位名は、カスタム部位名として残す
+      part: oneOf(e.part, PARTS, 'カスタム'),
+      customPart: str(e.customPart, 100) || (PARTS.includes(e.part) ? '' : str(e.part, 100)),
+      rating: Math.round(num(e.rating, 1, 5, 3)),
+      comment: str(e.comment),
+      createdAt: num(e.createdAt, 0, 8.64e15, Date.now()),
+      hex,
+      method: oneOf(e.method, ['average', 'manual'], 'average'),
+      extracted: (Array.isArray(e.extracted) ? e.extracted : []).map(hexOf).filter(Boolean),
+      cond: {
+        head: str(c.head, 100),
+        skin: oneOf(c.skin, SKINS, 'その他'),
+        topcoat: oneOf(c.topcoat, TOPCOATS, TOPCOATS[0]),
+        brand: DEFAULT_BRAND,
+        medium: PaintDB.mediumById[c.medium] ? c.medium : 'none',
+      },
+      estimated: (Array.isArray(e.estimated) ? e.estimated : [])
+        .map((x) => ({ items: cleanItems(x?.items), de: +num(x?.de, 0, 1000, 0).toFixed(2) }))
+        .filter((x) => x.items.length),
+      actual: cleanItems(e.actual),
+      refImages: cleanRefs(e.refImages),
+      recordImages: cleanRefs(e.recordImages),
+    };
+  }
+  // ユーザーDB 全体をそろえる。id が重なったエントリは新しい id にする
+  function cleanDb(d) {
+    const seen = new Set();
+    const entries = (Array.isArray(d?.entries) ? d.entries : []).map(cleanEntry).filter(Boolean).map((e) => {
+      if (seen.has(e.id)) e.id = uid();
+      seen.add(e.id);
+      return e;
+    });
+    return {
+      version: 1,
+      entries: byNewest(entries),
+      owned: [...new Set((Array.isArray(d?.owned) ? d.owned : []).filter((id) => PaintDB.byId[id]))],
+      lastMedium: PaintDB.mediumById[d?.lastMedium] ? d.lastMedium : 'painting-medium',
+    };
+  }
+  // 画像の記録をそろえる（id は英数字だけ。Blob がないものは除く）
+  const cleanImage = (im) => (im && ID_RE.test(im.id) && im.full instanceof Blob && im.thumb instanceof Blob
+    ? { id: im.id, name: str(im.name, 200), type: str(im.type, 50) || im.full.type, w: num(im.w, 0, 1e5, 0), h: num(im.h, 0, 1e5, 0), full: im.full, thumb: im.thumb }
+    : null);
+
   // 所持している絵具は、最初は何もない状態から選んでもらう
   function fresh(entries) { return { version: 1, entries, owned: [], lastMedium: 'painting-medium' }; }
   const byNewest = (list) => list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -190,7 +268,7 @@ const Store = (() => {
       }
       // 初めての起動：以前の版のデータがあれば移し、なければ空のレシピ帳で始める（サンプルは設定やレシピ帳から追加できる）
       const legacy = readLegacy();
-      db = legacy ? migrate({ ...fresh([]), ...legacy, entries: byNewest(legacy.entries || []) }) : fresh([]);
+      db = legacy ? cleanDb(legacy) : fresh([]);
       extractInlineImages(db.entries);
       const ok = await writeAll();
       if (ok && legacy) { try { localStorage.removeItem(LEGACY_KEY); } catch (e) { /* 消せなくても続ける */ } }
@@ -201,7 +279,7 @@ const Store = (() => {
       idb = null;
       images = new Map();
       const legacy = readLegacy();
-      db = legacy ? migrate({ ...fresh([]), ...legacy }) : fresh([]);
+      db = legacy ? cleanDb(legacy) : fresh([]);
       extractInlineImages(db.entries);
       return { ok: false, migrated: false };
     }
@@ -214,6 +292,23 @@ const Store = (() => {
     try {
       if (navigator.storage?.persist && !(await navigator.storage.persisted())) await navigator.storage.persist();
     } catch (e) { /* 対応していないブラウザ */ }
+  }
+
+  // db と images を fn で入れ替えて全部を書き直す。保存できなければメモリを元に戻す（IndexedDB は1つのトランザクションなので元のまま）
+  async function replaceWith(fn) {
+    const prevDb = db, prevImages = images;
+    fn();
+    const ok = await writeAll();
+    if (!ok) { db = prevDb; images = prevImages; return false; }
+    // 入れ替えで使わなくなった画像の表示用 URL を解放する
+    for (const [id, im] of prevImages) {
+      if (images.get(id) === im) continue;
+      for (const k of ['thumb', 'full']) {
+        const u = urls.get(`${id}:${k}`);
+        if (u) { URL.revokeObjectURL(u); urls.delete(`${id}:${k}`); }
+      }
+    }
+    return true;
   }
 
   function setOwnedMany(ids, owned) {
@@ -256,10 +351,12 @@ const Store = (() => {
       if (ok) { askPersist(); collectGarbage(); } // 上書きで参照しなくなった画像を消す
       return ok;
     },
+    // 削除できたら true。削除できなければメモリも元に戻す
     async remove(id) {
+      const prev = db.entries;
       db.entries = db.entries.filter((e) => e.id !== id);
       const ok = await write('entries', (s) => s.entries.delete(id));
-      if (ok) collectGarbage();
+      if (ok) collectGarbage(); else db.entries = prev;
       return ok;
     },
     isOwned: (id) => db.owned.includes(id),
@@ -271,22 +368,36 @@ const Store = (() => {
     setLastMedium(id) { db.lastMedium = id; return putMeta('lastMedium'); },
     // 全部を入れ替える（インポート）。imageRecords は画像 { id, name, type, w, h, full, thumb } の一覧
     // 以前の版のバックアップ（エントリの中にサムネイルの data URL がある）も読み込める
+    // 中身は確かめてから取り込む（cleanDb / cleanImage）。保存できなければ、メモリも元に戻す
     replaceAll(next, imageRecords = []) {
-      [...images.keys()].forEach(forgetImage);
-      images = new Map(imageRecords.map((im) => [im.id, im]));
-      db = migrate({ ...fresh([]), ...next, entries: byNewest(next.entries || []) });
-      extractInlineImages(db.entries);
-      const used = new Set(db.entries.flatMap((e) => imageRefs(e).map((r) => r.imageId)));
-      [...images.keys()].filter((id) => !used.has(id)).forEach(forgetImage);
-      return writeAll();
+      return replaceWith(() => {
+        images = new Map(imageRecords.map(cleanImage).filter(Boolean).map((im) => [im.id, im]));
+        db = cleanDb(next);
+        extractInlineImages(db.entries);
+        // 画像が見つからない参照は外し、どこからも参照されない画像は取り込まない
+        for (const e of db.entries) {
+          for (const k of ['refImages', 'recordImages']) e[k] = e[k].filter((r) => images.has(r.imageId));
+        }
+        const used = new Set(db.entries.flatMap((e) => imageRefs(e).map((r) => r.imageId)));
+        [...images.keys()].filter((id) => !used.has(id)).forEach((id) => images.delete(id));
+      });
     },
     // サンプルのカラー（6件）を追加する。今のカラーは消さない
-    addSamples() {
+    async addSamples() {
       const list = sample().map((e) => ({ ...e, name: `${e.name}（サンプル）` })); // 自分のカラーと見分けられるようにする
+      const prev = db.entries;
       db.entries = byNewest([...list, ...db.entries]);
-      return write('entries', (s) => list.forEach((e) => s.entries.put(e)));
+      const ok = await write('entries', (s) => list.forEach((e) => s.entries.put(e)));
+      if (!ok) db.entries = prev;
+      return ok;
     },
-    wipe() { [...images.keys()].forEach(forgetImage); db = fresh([]); return writeAll(); },
+    // レシピ帳のカラーと画像をすべて消す。絵具箱の所持の設定と、前回のメディウムは残す
+    wipe() {
+      return replaceWith(() => {
+        images = new Map();
+        db = { ...fresh([]), owned: db.owned, lastMedium: db.lastMedium };
+      });
+    },
     // このアプリのデータの大きさ（バイト。github.io のドメインは他のアプリと共有するので、ブラウザ全体の使用量ではなく自分の分を数える）
     sizeBytes: () => new Blob([JSON.stringify(db)]).size
       + [...images.values()].reduce((n, im) => n + im.full.size + (im.thumb === im.full ? 0 : im.thumb.size), 0),

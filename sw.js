@@ -17,12 +17,26 @@ self.addEventListener('activate', (e) => e.waitUntil(
 self.addEventListener('message', (e) => {
   if (e.data === 'skipWaiting') self.skipWaiting();
 });
+// 電波が弱くてサーバーの応答が遅いときは、この時間だけ待ってからキャッシュを使う（キャッシュがあるときだけ）
+const NET_TIMEOUT_MS = 4000;
 self.addEventListener('fetch', (e) => {
-  if (e.request.method !== 'GET') return;
-  // ブラウザのキャッシュを通すと古いファイルが返ることがあるので、毎回サーバーに確かめる（変わっていなければ 304 で軽い）
-  e.respondWith(
-    fetch(e.request, { cache: 'no-cache' })
-      .then((r) => { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); return r; })
-      .catch(() => caches.match(e.request))
-  );
+  const req = e.request;
+  // 同じサイトのファイルだけを扱う（外部へのリンクなどはブラウザに任せる）
+  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  e.respondWith((async () => {
+    const cached = await caches.match(req);
+    // ブラウザのキャッシュを通すと古いファイルが返ることがあるので、毎回サーバーに確かめる（変わっていなければ 304 で軽い）
+    const net = fetch(req, { cache: 'no-cache' }).then((r) => {
+      // 正常な応答だけをキャッシュに入れる（404 や 500 で、正常なファイルを上書きしない）
+      if (r.ok) {
+        const copy = r.clone();
+        e.waitUntil(caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {}));
+        return r;
+      }
+      return cached || r; // エラーの応答なら、キャッシュがあればそちらを返す
+    });
+    if (!cached) return net;
+    const timeout = new Promise((resolve) => setTimeout(() => resolve(cached), NET_TIMEOUT_MS));
+    return Promise.race([net.catch(() => cached), timeout]);
+  })());
 });

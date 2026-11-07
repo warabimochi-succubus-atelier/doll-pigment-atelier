@@ -228,8 +228,8 @@ class Picker {
     if (rect.w < 6 || rect.h < 6) rect = { x: x0 - 4, y: y0 - 4, w: 9, h: 9 }; // クリック・タップ = 点取得
     rect = this.clamp(rect);
     if (this.grayMode) {
-      const lin = this.sample(rect, null);
-      this.onGray && this.onGray(lin, rect);
+      const st = this.grayStats(rect);
+      this.onGray && this.onGray(st.lin, rect, st);
     } else {
       const lin = this.sample(rect, this.img.gains);
       this.onPick && this.onPick(Color.linearToRgb(lin), rect);
@@ -269,6 +269,24 @@ class Picker {
       n++;
     }
     return sum.map((v, c) => (v / n) * (gains ? gains[c] : 1));
+  }
+
+  // グレーカード補正の確認用：範囲の平均（線形・補正なし）、白飛びした画素の割合、明るさのばらつき（標準偏差÷平均）
+  grayStats(r) {
+    const d = this.img.canvas.getContext('2d').getImageData(r.x, r.y, r.w, r.h).data;
+    const sum = [0, 0, 0];
+    let n = 0, clipped = 0, ySum = 0, yySum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      const lin = Color.rgbToLinear([d[i], d[i + 1], d[i + 2]]);
+      sum[0] += lin[0]; sum[1] += lin[1]; sum[2] += lin[2];
+      if (d[i] >= 254 || d[i + 1] >= 254 || d[i + 2] >= 254) clipped++;
+      const y = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+      ySum += y; yySum += y * y;
+      n++;
+    }
+    const yMean = ySum / n;
+    const sd = Math.sqrt(Math.max(0, yySum / n - yMean * yMean));
+    return { lin: sum.map((v) => v / n), clipped: clipped / n, spread: yMean > 0 ? sd / yMean : 0 };
   }
 
   draw() {
@@ -324,7 +342,10 @@ function fileToCanvas(file, maxSide = 1600) {
       URL.revokeObjectURL(url);
       resolve(c);
     };
-    im.onerror = reject;
+    im.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error(`画像を読み込めません: ${file.name}`));
+    };
     im.src = url;
   });
 }

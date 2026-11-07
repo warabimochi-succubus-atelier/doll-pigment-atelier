@@ -14,7 +14,7 @@
     t.textContent = msg;
     t.hidden = false;
     clearTimeout(toast.t);
-    toast.t = setTimeout(() => (t.hidden = true), 2600);
+    toast.t = setTimeout(() => (t.hidden = true), Math.max(2600, msg.length * 90)); // 長い案内は読み終えられるよう長めに出す
   }
   const SAVE_FAILED = '保存できませんでした。端末の空き容量が不足している可能性があります（画像を減らしてください）';
   // 書き込みの結果を待ち、保存できなかったら知らせる（所持の設定など、結果を待たずに画面を進める操作用）
@@ -61,17 +61,24 @@
       renderExtracted();
       picker.draw();
     },
-    onGray(lin) {
+    onGray(lin, rect, st) {
+      // 白飛び・暗すぎる範囲では正しい補正値が出ないので、補正しない
+      if (st.clipped > GRAY_CLIP_MAX) {
+        return toast('囲んだ範囲が白飛びしているため補正できません。白飛びしていない部分を囲むか、明るさを抑えて撮り直してください');
+      }
+      if (Math.max(...lin) < GRAY_DARK_MIN) {
+        return toast('囲んだ範囲が暗すぎるため補正できません。グレーカードの部分を囲んでいるか確認してください');
+      }
       const img = curImg();
       img.gains = lin.map((v) => 0.18 / Math.max(0.001, v));
       setGrayMode(false);
-      // 補正後に既存の抽出色を取り直す
-      for (const ex of S.extracted.filter((x) => x.imgId === img.id)) {
-        ex.rgb = Color.linearToRgb(picker.sample(ex.rect, img.gains));
-      }
+      resampleExtracted(img);
       renderImages();
       renderExtracted();
-      toast('グレーカードでホワイトバランスと明るさを補正しました');
+      // 明るさのむらが大きい：グレーカード以外の部分も囲んでいる可能性がある（補正はする）
+      toast(st.spread > GRAY_SPREAD_MAX
+        ? '補正しましたが、囲んだ範囲の明るさにむらがあります。グレーカードの部分だけを囲めているか確認してください'
+        : 'グレーカードでホワイトバランスと明るさを補正しました');
     },
     overlays: () => S.extracted
       .filter((x) => x.imgId === S.active)
@@ -84,6 +91,16 @@
     },
   });
   const curImg = () => S.images.find((i) => i.id === S.active);
+  // グレーカード補正の確認（仕様書 2.1）
+  const GRAY_CLIP_MAX = 0.02;  // 白飛びした画素がこの割合を超えたら補正しない
+  const GRAY_DARK_MIN = 0.01;  // 線形の平均がこれより暗ければ補正しない（sRGB でおよそ 25）
+  const GRAY_SPREAD_MAX = 0.2; // 明るさのばらつき（標準偏差÷平均）がこれを超えたら知らせる
+  // 画像の補正を変えたら、その画像から取った抽出色を取り直す（picker が表示している画像に限る）
+  function resampleExtracted(img) {
+    for (const ex of S.extracted.filter((x) => x.imgId === img.id)) {
+      ex.rgb = Color.linearToRgb(picker.sample(ex.rect, img.gains));
+    }
+  }
 
   // 画像を本画像（長辺 1600px）とサムネイル（長辺 320px）にして保存し、id を返す（保存できなければ null）
   async function storeImage(canvas, name) {
@@ -107,6 +124,7 @@
       </button>`).join('');
     const img = curImg();
     $('#img-tools').hidden = !img;
+    $('#btn-gray-reset').hidden = !img?.gains;
     if (!img) {
       picker.setImage(null);
       setPanMode(false);
@@ -131,9 +149,23 @@
     if (b) { S.active = b.dataset.id; setGrayMode(false); renderImages(); }
   });
 
+  // 画像ファイルを読み込む。読み込めなければ知らせて null を返す（HEIC を表示できないブラウザ、壊れたファイルなど）
+  async function loadImageFile(f, maxSide) {
+    try {
+      return await fileToCanvas(f, maxSide);
+    } catch (err) {
+      console.warn(err);
+      toast(`「${f.name}」を読み込めませんでした。JPEG・PNG などの画像を選んでください`);
+      return null;
+    }
+  }
   $('#img-input').addEventListener('change', async (e) => {
-    for (const f of e.target.files) addImage(await fileToCanvas(f), f.name);
+    const files = [...e.target.files];
     e.target.value = '';
+    for (const f of files) {
+      const c = await loadImageFile(f);
+      if (c) addImage(c, f.name);
+    }
   });
   // 画像が1枚もないときだけ、案内文の中に「サンプル画像で試してみる」を出す
   $('#img-stage').addEventListener('click', (e) => {
@@ -171,6 +203,16 @@
     updateHint();
   }
   $('#btn-gray').addEventListener('click', () => setGrayMode(!picker.grayMode));
+  $('#btn-gray-reset').addEventListener('click', () => {
+    const img = curImg();
+    if (!img?.gains) return;
+    img.gains = null;
+    setGrayMode(false);
+    resampleExtracted(img);
+    renderImages();
+    renderExtracted();
+    toast('グレーカード補正を解除しました');
+  });
   $('#btn-pan').addEventListener('click', () => setPanMode(!picker.panMode));
   $('#zoom-in').addEventListener('click', () => picker.zoomBy(1.5));
   $('#zoom-out').addEventListener('click', () => picker.zoomBy(1 / 1.5));
@@ -219,8 +261,9 @@
   $('#btn-camera').addEventListener('click', openCamera);
   $('#cam-input').addEventListener('change', async (e) => {
     const f = e.target.files[0];
-    if (f) addImage(await fileToCanvas(f), shotName());
     e.target.value = '';
+    const c = f && await loadImageFile(f);
+    if (c) addImage(c, shotName());
   });
   $('#cam-shoot').addEventListener('click', () => {
     const w = camVideo.videoWidth, h = camVideo.videoHeight;
@@ -349,9 +392,13 @@
   let pendingKey = null; // 計算中の「代表色＋所持絵具」
 
   // 計算は Web Worker で行い、画面を固めない（所持している絵具が多いと時間がかかるため）
-  // 新しい計算を始めるときは、古い計算を Worker ごと止める。Worker を使えないとき（index.html を直接開いた場合など）は画面側で計算する
+  // Worker は起動時に1つだけ作って使い続ける（作り直すと、スクリプトの読み込みと絵具の準備をやり直すうえ、
+  // 新しい版が公開された直後に、画面と Worker で版が食い違うことがあるため）。
+  // 計算中に新しい計算を頼まれたら、終わるのを待ってから最新の1件だけを計算する（古い結果は捨てる）。
+  // Worker を使えないとき（index.html を直接開いた場合など）は画面側で計算する
   const Reverser = (() => {
-    let worker = null, failed = false, seq = 0, waiting = null; // waiting: { id, args, resolve }
+    let worker = null, failed = false, seq = 0, busy = false;
+    let waiting = null; // 結果を待っている最新の計算 { id, args, resolve, sent }
     const runHere = ({ rgb, ids, top }) => {
       const t0 = performance.now();
       const cands = PaintDB.reverse(rgb, ids, top);
@@ -359,41 +406,49 @@
     };
     function fallback() {
       failed = true;
+      busy = false;
       worker?.terminate();
       worker = null;
       const w = waiting;
       waiting = null;
       if (w) w.resolve(runHere(w.args));
     }
+    function send() {
+      busy = true;
+      waiting.sent = true;
+      worker.postMessage({ id: waiting.id, ...waiting.args });
+    }
     function ensure() {
       if (worker || failed) return worker;
       try {
         worker = new Worker('js/reverse-worker.js');
         worker.onmessage = (e) => {
-          if (waiting?.id !== e.data.id) return;
-          const w = waiting;
-          waiting = null;
-          w.resolve({ cands: e.data.cands, ms: e.data.ms });
+          busy = false;
+          if (waiting?.id === e.data.id) {
+            const w = waiting;
+            waiting = null;
+            w.resolve({ cands: e.data.cands, ms: e.data.ms });
+          } else if (waiting && !waiting.sent) {
+            send(); // 計算中に頼まれた最新の計算を始める
+          }
         };
         worker.onerror = (e) => { e.preventDefault?.(); fallback(); };
       } catch (e) { failed = true; worker = null; }
       return worker;
     }
-    // 計算中のものがあれば止めて、結果は null にする
+    // 結果を待っている計算をやめて、結果は null にする（Worker で計算中のものは、終わってから捨てる）
     function cancel() {
       if (!waiting) return;
       waiting.resolve(null);
       waiting = null;
-      worker?.terminate();
-      worker = null;
     }
     function run(rgb, ids, top = 3) {
       cancel();
       const args = { rgb, ids, top };
       if (!ensure()) return Promise.resolve(runHere(args));
       return new Promise((resolve) => {
-        waiting = { id: ++seq, args, resolve };
-        worker.postMessage({ id: waiting.id, ...args });
+        waiting = { id: ++seq, args, resolve, sent: false };
+        if (!busy) send();
       });
     }
     ensure(); // 最初の計算を待たせないよう、起動時に読み込んでおく
@@ -490,9 +545,10 @@
     const sub = e.target.closest('[data-sub]');
     if (sub) {
       const i = +sub.dataset.sub, pid = sub.dataset.paint;
-      warnIfFailed(Store.setOwned(pid, false));
+      // 代わりの絵具が見つかったときだけ未所持にする（見つからなければ所持の設定は変えない）
       const res = PaintDB.substitute(S.candidates[i], pid, representative(), owned());
-      if (!res) return toast('代替できる絵具がありません');
+      if (!res) return toast('代替できる絵具がありません（所持の設定は変えていません）');
+      warnIfFailed(Store.setOwned(pid, false));
       S.candidates[i] = res;
       stopReverse();
       S.candKey = candKeyNow(); // 未所持にした分で計算し直さず、置き換えた候補を残す
@@ -717,6 +773,7 @@
         if (!confirm(`「${e.name}」を削除します。よろしいですか？`)) return;
         const ok = await Store.remove(e.id);
         dlg.close(); renderLibrary(); toast(ok ? '削除しました' : '削除できませんでした');
+        if (ok) dropStaleRecall();
       }
       if (act === 'recall') {
         // 書き換えてあれば、先に保存してから呼び出す
@@ -735,12 +792,15 @@
     };
     form.querySelector('[data-rec]').onchange = async (ev) => {
       work.recordImages = work.recordImages || [];
-      for (const f of ev.target.files) {
-        const id = await storeImage(await fileToCanvas(f, 1600), f.name);
+      const files = [...ev.target.files];
+      ev.target.value = '';
+      for (const f of files) {
+        const c = await loadImageFile(f, 1600);
+        if (!c) continue;
+        const id = await storeImage(c, f.name);
         if (!id) { toast(SAVE_FAILED); break; }
         work.recordImages.push({ imageId: id, name: f.name });
       }
-      ev.target.value = '';
       $('#rec-thumbs').innerHTML = recThumbs(work.recordImages);
       markDirty();
     };
@@ -852,7 +912,7 @@
     const b = $('#recall-banner');
     b.innerHTML = `${sw(e.hex)} <span>「<b>${esc(e.name)}</b>」の調色を呼び出しました。下の絵具と割合を微調整して、上書き保存するか、別のカラーとしてレシピ帳に追加できます。</span><button class="icon-btn" id="btn-unrecall" title="呼び出しをやめる">×</button>`;
     b.hidden = false;
-    $('#btn-unrecall').onclick = () => { S.recalled = null; b.hidden = true; };
+    $('#btn-unrecall').onclick = clearRecall;
     renderImages(); renderExtracted(); renderCandidates(); renderMix();
     // 呼び出した内容が入る「4 実際の調色」までスクロールし、一瞬強調する
     const showMixCard = () => {
@@ -868,6 +928,17 @@
     } else {
       showMixCard();
     }
+  }
+
+  // 呼び出しの案内を閉じる（呼び出した色・候補・調色はそのまま残る）
+  function clearRecall() {
+    S.recalled = null;
+    $('#recall-banner').hidden = true;
+    renderSimilar();
+  }
+  // 呼び出し元のカラーが削除された（削除・インポート・すべて削除）ら、呼び出しの案内を閉じる
+  function dropStaleRecall() {
+    if (S.recalled && !Store.get(S.recalled)) clearRecall();
   }
 
   // ================= 数値で指定（手順1） =================
@@ -1087,6 +1158,7 @@
   });
   // データを入れ替えたら、レシピ帳と調色画面の表示（近い色・調色候補）を更新する
   function afterDataChange() {
+    dropStaleRecall();
     renderLibrary(); renderCandidates(); renderMix(); scheduleReverse(); renderSettings();
   }
   // サンプルのカラーを追加する（今のカラーは消さない。不要になったら1件ずつ削除できる）
@@ -1097,7 +1169,7 @@
   }
   $('#btn-add-sample').addEventListener('click', addSamples);
   $('#btn-wipe').addEventListener('click', async () => {
-    if (!confirm('すべてのカラーエントリを削除します。元に戻せません。')) return;
+    if (!confirm('レシピ帳のすべてのカラー（画像を含む）を削除します。絵具箱の所持の設定は残ります。元に戻せません。')) return;
     const ok = await Store.wipe();
     toast(ok ? '削除しました' : '削除できませんでした');
     afterDataChange();
