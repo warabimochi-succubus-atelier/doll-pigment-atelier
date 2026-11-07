@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Doll Pigment Atelier</title>
+  <meta name="description" content="成功した色を蓄積し、再現を支援するドールメイク用アトリエツール">
+  <meta name="theme-color" content="#B85C74">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/favicon.ico" sizes="any">
+  <link rel="icon" href="icons/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="icons/icon-192.png" alt="" width="32" height="32" class="brand-icon">
+      <div>
+        <div class="brand-name">Doll Pigment Atelier</div>
+        <div class="brand-sub">mock · v0.1</div>
+      </div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <a href="#mix" data-tab="mix">新規調色</a>
+      <a href="#find" data-tab="find">再現・検索</a>
+      <a href="#library" data-tab="library">色ライブラリ</a>
+      <a href="#paints" data-tab="paints">絵具DB</a>
+      <a href="#settings" data-tab="settings">設定</a>
+    </nav>
+    <button class="about-btn" id="btn-about" title="このアプリについて" aria-label="このアプリについて">
+      <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="7.6" r="1.2" fill="currentColor"/><path d="M12 10.8v6.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    </button>
+  </header>
+
+  <main>
+    <!-- ========== 新規調色 ========== -->
+    <section id="view-mix" class="view">
+      <div id="recall-banner" class="banner" hidden></div>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <h2><span class="step">1</span>参考画像</h2>
+            <label class="btn btn-ghost">画像を追加<input type="file" id="img-input" accept="image/*" multiple hidden></label>
+          </div>
+          <div id="img-strip" class="img-strip"></div>
+          <div id="img-stage" class="img-stage"></div>
+          <div id="img-tools" class="img-tools" hidden>
+            <button class="btn btn-ghost btn-s" id="btn-gray">グレーカード補正</button>
+            <span class="hint" id="img-hint">ドラッグで範囲を選択 → 色を取得</span>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><h2><span class="step">2</span>代表色を決める</h2></div>
+          <div class="sub">抽出色</div>
+          <div id="extracted" class="chips"></div>
+          <div class="field">
+            <label>代表色の決め方</label>
+            <div class="choices" id="method" role="radiogroup" aria-label="代表色の決め方">
+              <button role="radio" data-v="average">平均色</button>
+              <button role="radio" data-v="median">中央値</button>
+            </div>
+            <p class="method-hint" id="method-hint"></p>
+          </div>
+          <div id="target" class="target"></div>
+          <button class="btn btn-primary btn-block" id="btn-reverse">逆引き調色で候補を出す</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="step">3</span>調色候補</h2>
+          <span class="hint">重量比・最大4色・5%刻み / Kubelka-Munk（RGB近似）</span>
+        </div>
+        <div id="candidates" class="cands"><div class="empty">代表色を決めて「逆引き調色」を実行してください</div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h2><span class="step">4</span>実際の調色（手動調整）</h2>
+          <button class="btn btn-ghost btn-s" id="btn-add-row">＋ 絵具を追加</button>
+        </div>
+        <div class="mix-wrap">
+          <div>
+            <div class="sub">絵具（合計 100%）</div>
+            <div id="mix-rows" class="mix-rows"></div>
+            <div class="row between medium-head">
+              <div class="sub">メディウム（水を含む・絵具の合計重量に対する割合）</div>
+              <button class="btn btn-ghost btn-s" id="btn-add-medium">＋ メディウムを追加</button>
+            </div>
+            <div id="medium-rows" class="mix-rows"></div>
+          </div>
+          <div class="mix-preview" id="mix-preview"></div>
+        </div>
+        <div class="row end gap-s">
+          <button class="btn btn-ghost" id="btn-clear-mix">クリア</button>
+          <button class="btn btn-primary" id="btn-save">ライブラリに保存…</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 再現・検索 ========== -->
+    <section id="view-find" class="view">
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-head">
+            <h2>写真から探す</h2>
+            <label class="btn btn-ghost">過去作品の写真<input type="file" id="find-img" accept="image/*" hidden></label>
+          </div>
+          <div id="find-stage" class="img-stage small"><div class="empty">過去作品の写真を読み込み、探したい部分をドラッグ</div></div>
+          <div class="field">
+            <label for="find-hex">または色を数値で指定（HEX または RGB）</label>
+            <div class="row gap-s">
+              <input id="find-hex" class="mono w-m" placeholder="#D98C8C" spellcheck="false">
+              <button class="btn btn-ghost btn-s" id="btn-find-hex">検索</button>
+            </div>
+          </div>
+          <div id="find-target" class="target"></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h2>類似色の検索結果</h2>
+            <span class="hint">ΔE2000 の小さい順 → 同差なら高評価優先</span>
+          </div>
+          <div id="find-results" class="list"><div class="empty">色を指定すると、ライブラリから近い色を探します</div></div>
+          <button class="btn btn-ghost btn-block" id="btn-find-to-mix" hidden>この色で調色候補を計算する →</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== 色ライブラリ ========== -->
+    <section id="view-library" class="view">
+      <div class="card">
+        <div class="filters">
+          <input id="lib-q" placeholder="名称・コメント・ヘッドで検索" class="grow">
+          <select id="lib-part"><option value="">すべての部位</option></select>
+          <select id="lib-rating">
+            <option value="0">評価：すべて</option>
+            <option value="5">★5のみ</option>
+            <option value="4">★4以上</option>
+            <option value="3">★3以上</option>
+          </select>
+          <select id="lib-sort">
+            <option value="new">新しい順</option>
+            <option value="rating">評価の高い順</option>
+            <option value="name">名称順</option>
+          </select>
+        </div>
+      </div>
+      <div id="lib-grid" class="lib-grid"></div>
+    </section>
+
+    <!-- ========== 絵具DB ========== -->
+    <section id="view-paints" class="view">
+      <div class="card">
+        <div class="card-head">
+          <h2>標準DB：リキテックス</h2>
+          <span class="badge">編集不可</span>
+        </div>
+        <p class="hint">「所持」を外した絵具は逆引き調色に使われません。白との混色見本（絵具のみ / 1:1 / 1:4 / 1:10）は K・S から計算した予測です。</p>
+        <div class="table-wrap">
+          <table class="paints">
+            <thead><tr><th>所持</th><th>絵具</th><th>白との混色見本</th><th class="num">K/S (R, G, B)</th></tr></thead>
+            <tbody id="paint-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card muted-card">
+        <div class="card-head"><h2>ユーザー絵具の登録</h2><span class="badge badge-future">将来機能</span></div>
+        <ol class="steps">
+          <li>絵具を Titanium White と重量比で混ぜ、見本を作る（絵具のみ / 1:1 / 1:4 / 1:10）</li>
+          <li>グレーカードと一緒に、同じ照明で一度に撮影する</li>
+          <li class="auto">補正・反射率変換・K/S 計算・最小二乗フィットはアプリが自動で行う</li>
+        </ol>
+        <button class="btn btn-ghost" disabled>絵具を追加（準備中）</button>
+      </div>
+    </section>
+
+    <!-- ========== 設定 ========== -->
+    <section id="view-settings" class="view">
+      <div class="card">
+        <div class="card-head"><h2>バックアップ</h2></div>
+        <p class="hint">ユーザーDB と画像を一括でエクスポート・インポートします（モックでは JSON ファイル）。</p>
+        <div class="row gap-s wrap">
+          <button class="btn btn-primary" id="btn-export">エクスポート</button>
+          <label class="btn btn-ghost">インポート<input type="file" id="import-input" accept="application/json" hidden></label>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>データ保存</h2></div>
+        <p class="hint">データは端末内だけに保存し、サーバーには送信しません。他人の作品画像は個人の参考用で、アプリから公開・共有しません。</p>
+        <div class="kv" id="storage-info"></div>
+        <div class="row gap-s wrap">
+          <button class="btn btn-ghost" id="btn-persist">永続保存を要求</button>
+          <button class="btn btn-ghost" id="btn-reset-sample">サンプルデータに戻す</button>
+          <button class="btn btn-danger" id="btn-wipe">すべて削除</button>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>このモックについて</h2></div>
+        <ul class="plain">
+          <li>仕様書「Doll Pigment Atelier」初期バージョン必須機能の画面モックです。</li>
+          <li>絵具の K・S はマストーン色からの仮の近似値で、実測値ではありません。</li>
+          <li>保存はブラウザの localStorage（本実装では IndexedDB）を使っています。</li>
+        </ul>
+        <div class="row gap-s wrap" style="margin-top:12px">
+          <button class="btn btn-ghost" data-open-about>このアプリについて</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 保存 / 詳細ダイアログ -->
+  <dialog id="entry-dialog" class="dialog">
+    <form method="dialog" id="entry-form"></form>
+  </dialog>
+
+  <!-- このアプリについて -->
+  <dialog id="about-dialog" class="dialog about">
+    <form method="dialog">
+      <div class="about-body">
+        <img src="icons/icon-192.png" alt="" width="88" height="88" class="about-icon">
+        <h2 class="about-title">Doll Pigment Atelier</h2>
+        <div class="about-ver mono">mock · v0.1</div>
+        <p class="about-desc">成功した色を蓄積し、再現を支援する<br>ドールメイク用アトリエツール</p>
+
+        <div class="about-author">
+          <div class="about-label">作者</div>
+          <div class="about-logo"><img src="images/author-logo.webp" alt="わらびもちサキュバス工房" width="1400" height="600"></div>
+          <div class="about-name">わらびもちサキュバス工房</div>
+        </div>
+
+        <div class="about-links">
+          <a class="btn btn-ghost" href="https://github.com/warabimochi-succubus-atelier/doll-pigment-atelier" target="_blank" rel="noopener">
+            <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+            GitHub
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/warabimochi-succubus-atelier/doll-pigment-atelier/blob/main/USER_MANUAL.md" target="_blank" rel="noopener">
+            <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 5.5A2.5 2.5 0 016.5 3H20v15H6.5A2.5 2.5 0 004 20.5zM4 20.5A2.5 2.5 0 006.5 23H20v-5"/></svg>
+            マニュアル
+          </a>
+        </div>
+      </div>
+      <div class="dlg-foot">
+        <span class="grow"></span>
+        <button class="btn btn-primary" value="close">閉じる</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="js/color.js"></script>
+  <script src="js/km.js"></script>
+  <script src="js/store.js"></script>
+  <script src="js/picker.js"></script>
+  <script src="js/sample.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
