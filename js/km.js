@@ -1,24 +1,37 @@
 // 標準DB（リキテックス レギュラー / ソフト / ベーシックス）と Kubelka-Munk による混色・逆引き調色
-// ※モック: K・S は実測ではなく、仮の色（チャートの色見本の平均色）と仮の着色力から RGB 3チャンネルで近似した値
+// K・S は RGB 3チャンネルで近似する。js/paints-ks.js に実測値（仕様書 3.5）がある絵具はそれを使い、
+// ない絵具は、仮の色（チャートの色見本の平均色）と仮の着色力から求めた仮の値を使う
 const PaintDB = (() => {
   const OPACITY = { opaque: '不透明', semi: '半透明', transparent: '透明' };
 
   const lines = PAINT_LINES;
   const lineById = Object.fromEntries(lines.map((l) => [l.id, l]));
 
-  const paints = PAINT_DATA.map(([id, line, no, name, hex, opacity, group, strength, discontinued = false]) => {
-    const rgb = Color.parseHex(hex);
-    const R = Color.rgbToLinear(rgb).map((r) => Math.min(0.97, Math.max(0.035, r)));
-    const ks = R.map((r) => ((1 - r) * (1 - r)) / (2 * r));
-    const S = [strength, strength, strength];
-    const K = ks.map((v) => v * strength);
+  const MEASURED = typeof PAINT_KS === 'object' && PAINT_KS ? PAINT_KS : {};
+
+  const paints = PAINT_DATA.map(([id, line, no, name, chartHex, opacity, group, strength, discontinued = false]) => {
     // メタリック・蛍光・イリディッセントは混色計算で表せないので、逆引き調色に使わない
     const mixable = group !== 'special';
+    const m = mixable ? MEASURED[id] : null;
+    let K, S, rgb;
+    if (m) {
+      // 実測値：色見本も K・S から求めた絵具だけの色にする
+      K = [...m.K];
+      S = [...m.S];
+      rgb = Color.linearToRgb(K.map((k, c) => { const ks = k / S[c]; return 1 + ks - Math.sqrt(ks * ks + 2 * ks); }));
+    } else {
+      rgb = Color.parseHex(chartHex);
+      const R = Color.rgbToLinear(rgb).map((r) => Math.min(0.97, Math.max(0.035, r)));
+      const ks = R.map((r) => ((1 - r) * (1 - r)) / (2 * r));
+      S = [strength, strength, strength];
+      K = ks.map((v) => v * strength);
+    }
+    const hex = Color.toHex(rgb);
     // label は画面表示用（品番＋色名。ベーシックスは品番がないので色名だけ）
     // fullLabel はラインの違う同じ色と区別するための表示（ラインを添える）
     const label = no ? `${no} ${name}` : name;
     const fullLabel = `${label}（${lineById[line].name}）`;
-    return { id, line, no, name, label, fullLabel, hex, rgb, lab: Color.rgbToLab(rgb), K, S, strength, opacity, group, mixable, discontinued };
+    return { id, line, no, name, label, fullLabel, hex, chartHex, rgb, lab: Color.rgbToLab(rgb), K, S, strength, opacity, group, mixable, discontinued, measured: !!m };
   });
   const byId = Object.fromEntries(paints.map((p) => [p.id, p]));
 

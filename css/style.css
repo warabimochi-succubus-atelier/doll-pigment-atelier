@@ -308,6 +308,7 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tag.op-transparent { background: color-mix(in srgb, #3b82c4 14%, transparent); color: #2e6ea8; }
 .tag.op-semi { background: color-mix(in srgb, #8a6fc4 14%, transparent); color: #6c55a8; }
 .tag.op-opaque { background: var(--surface-2); color: var(--ink-2); }
+.tag.tag-measured { background: color-mix(in srgb, #3f9a6b 14%, transparent); color: #2f7d55; }
 .tag.tag-stop { background: color-mix(in srgb, #c45a3b 12%, transparent); color: #a8482e; }
 .tag-muted { background: transparent; border: 1px dashed var(--line); color: var(--ink-2); }
 .paint-filters { display: grid; gap: 10px; }
