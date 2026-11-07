@@ -1,37 +1,23 @@
-// 標準DB（リキテックス レギュラー / ソフト / ベーシックス）と Kubelka-Munk による混色・逆引き調色
-// K・S は RGB 3チャンネルで近似する。js/paints-ks.js に実測値（仕様書 3.5）がある絵具はそれを使い、
-// ない絵具は、仮の色（チャートの色見本の平均色）と仮の着色力から求めた仮の値を使う
+// 標準DB（リキテックス レギュラー / ソフト / ベーシックス）と、Mixbox による混色・逆引き調色
+// 混色は Mixbox（js/vendor/mixbox.js。Kubelka-Munk 理論にもとづく顔料の混色モデル）で計算する（仕様書 2.3）。
+// 各絵具の色（カラーチャートの色見本の色）を Mixbox の潜在表現（latent。7つの数）にしておき、
+// 割合で重み付けして足し合わせてから色に戻す。絵具ごとの着色力の違いは扱わない
 const PaintDB = (() => {
   const OPACITY = { opaque: '不透明', semi: '半透明', transparent: '透明' };
 
   const lines = PAINT_LINES;
   const lineById = Object.fromEntries(lines.map((l) => [l.id, l]));
+  const LATENT = mixbox.LATENT_SIZE;
 
-  const MEASURED = typeof PAINT_KS === 'object' && PAINT_KS ? PAINT_KS : {};
-
-  const paints = PAINT_DATA.map(([id, line, no, name, chartHex, opacity, group, strength, discontinued = false]) => {
+  const paints = PAINT_DATA.map(([id, line, no, name, hex, opacity, group, discontinued = false]) => {
     // メタリック・蛍光・イリディッセントは混色計算で表せないので、逆引き調色に使わない
     const mixable = group !== 'special';
-    const m = mixable ? MEASURED[id] : null;
-    let K, S, rgb;
-    if (m) {
-      // 実測値：色見本も K・S から求めた絵具だけの色にする
-      K = [...m.K];
-      S = [...m.S];
-      rgb = Color.linearToRgb(K.map((k, c) => { const ks = k / S[c]; return 1 + ks - Math.sqrt(ks * ks + 2 * ks); }));
-    } else {
-      rgb = Color.parseHex(chartHex);
-      const R = Color.rgbToLinear(rgb).map((r) => Math.min(0.97, Math.max(0.035, r)));
-      const ks = R.map((r) => ((1 - r) * (1 - r)) / (2 * r));
-      S = [strength, strength, strength];
-      K = ks.map((v) => v * strength);
-    }
-    const hex = Color.toHex(rgb);
+    const rgb = Color.parseHex(hex);
     // label は画面表示用（品番＋色名。ベーシックスは品番がないので色名だけ）
     // fullLabel はラインの違う同じ色と区別するための表示（ラインを添える）
     const label = no ? `${no} ${name}` : name;
     const fullLabel = `${label}（${lineById[line].name}）`;
-    return { id, line, no, name, label, fullLabel, hex, chartHex, rgb, lab: Color.rgbToLab(rgb), K, S, strength, opacity, group, mixable, discontinued, measured: !!m };
+    return { id, line, no, name, label, fullLabel, hex, rgb, lab: Color.rgbToLab(rgb), z: mixbox.rgbToLatent(...rgb), opacity, group, mixable, discontinued };
   });
   const byId = Object.fromEntries(paints.map((p) => [p.id, p]));
 
@@ -53,22 +39,17 @@ const PaintDB = (() => {
   // フタロシアニングリーン、フタロシアニンブルー、ウルトラマリンブルー、ディオキサジンパープル、バーントシェンナ、マースブラック、チタニウムホワイト
   const STARTER_IDS = ['lq013', 'lq016', 'lq025', 'lq029', 'lq040', 'lq043', 'lq067', 'lq068', 'lq074', 'lq081', 'lq095', 'lq101'];
 
-  // 重量比 weights（任意スケール）で混色した線形反射率
+  // 割合 weights（任意スケール）で混色した線形 RGB
+  const zMix = new Array(LATENT);
   function mixLinear(list, weights) {
     let tw = 0;
     for (const w of weights) tw += w;
-    const out = [0, 0, 0];
-    for (let c = 0; c < 3; c++) {
-      let K = 0, S = 0;
-      for (let i = 0; i < list.length; i++) {
-        const w = weights[i] / tw;
-        K += w * list[i].K[c];
-        S += w * list[i].S[c];
-      }
-      const ks = K / S;
-      out[c] = 1 + ks - Math.sqrt(ks * ks + 2 * ks);
+    zMix.fill(0);
+    for (let i = 0; i < list.length; i++) {
+      const w = weights[i] / tw, z = list[i].z;
+      for (let k = 0; k < LATENT; k++) zMix[k] += w * z[k];
     }
-    return out;
+    return mixbox.latentToLinearFloatRgb(zMix);
   }
   const mixRgb = (list, weights) => Color.linearToRgb(mixLinear(list, weights));
 
@@ -84,29 +65,64 @@ const PaintDB = (() => {
     COMPS.push(out);
   }
 
-  // 組み合わせ set の中で、目標に最も近い割合を探す（探索の中心なので、配列を作らずに計算する）
-  // K/S は重みの合計で割っても変わらないので、割合は整数のまま使う。比較は ΔE76 の2乗で行う
-  const labF = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
-  const KM_R = (K, S) => { const ks = K / S; return 1 + ks - Math.sqrt(ks * ks + 2 * ks); };
-  function bestForSet(set, targetLab) {
+  // 探索は2段階にする（Mixbox の色への戻し〈latentToLinearFloatRgb〉は重いので、回数を減らす）
+  // 1. 潜在表現の距離で探す：Mixbox の混色は潜在表現の重み付きの和なので、
+  //    目標の色の潜在表現に近い組み合わせほど、混ぜた色も目標に近い。戻しの計算はしない
+  // 2. 有望な組み合わせだけ色に戻し、ΔE76 でいちばん近い割合を選ぶ
+  const KEEP = 8; // 1つの組み合わせで、2. に回す割合の数
+  function latentFit(set, zt) {
     const comps = COMPS[set.length], n = set.length;
-    const [tL, ta, tb] = targetLab;
-    let bestI = 0, bestD = Infinity;
+    const top = []; // { ci, d } 距離の小さい順に KEEP 個
     for (let ci = 0; ci < comps.length; ci++) {
       const comp = comps[ci];
-      let K0 = 0, K1 = 0, K2 = 0, S0 = 0, S1 = 0, S2 = 0;
-      for (let i = 0; i < n; i++) {
-        const w = comp[i], p = set[i];
-        K0 += w * p.K[0]; K1 += w * p.K[1]; K2 += w * p.K[2];
-        S0 += w * p.S[0]; S1 += w * p.S[1]; S2 += w * p.S[2];
+      let d = 0;
+      for (let k = 0; k < LATENT; k++) {
+        let v = -zt[k];
+        for (let i = 0; i < n; i++) v += (comp[i] / UNITS) * set[i].z[k];
+        d += v * v;
       }
-      const r = KM_R(K0, S0), g = KM_R(K1, S1), b = KM_R(K2, S2);
-      // 線形 RGB → Lab（Color.linearToLab と同じ式）
-      const fx = labF((0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047);
-      const fy = labF(0.2126729 * r + 0.7151522 * g + 0.072175 * b);
-      const fz = labF((0.0193339 * r + 0.119192 * g + 0.9503041 * b) / 1.08883);
-      const dL = 116 * fy - 16 - tL, da = 500 * (fx - fy) - ta, db = 200 * (fy - fz) - tb;
-      const d = dL * dL + da * da + db * db;
+      if (top.length < KEEP || d < top[top.length - 1].d) {
+        let j = top.length < KEEP ? top.length : KEEP - 1;
+        while (j > 0 && top[j - 1].d > d) { if (j < KEEP) top[j] = top[j - 1]; j--; }
+        top[j] = { ci, d };
+      }
+    }
+    return { set, top, d: top[0].d };
+  }
+
+  // 割合 comp で混ぜた色と目標の ΔE76 の2乗
+  const labF = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const zBuf = new Array(LATENT);
+  function colorDist(set, comp, targetLab) {
+    zBuf.fill(0);
+    for (let i = 0; i < set.length; i++) {
+      const w = comp[i] / UNITS, z = set[i].z;
+      for (let k = 0; k < LATENT; k++) zBuf[k] += w * z[k];
+    }
+    const [r, g, b] = mixbox.latentToLinearFloatRgb(zBuf);
+    // 線形 RGB → Lab（Color.linearToLab と同じ式）
+    const fx = labF((0.4124564 * r + 0.3575761 * g + 0.1804375 * b) / 0.95047);
+    const fy = labF(0.2126729 * r + 0.7151522 * g + 0.072175 * b);
+    const fz = labF((0.0193339 * r + 0.119192 * g + 0.9503041 * b) / 1.08883);
+    const dL = 116 * fy - 16 - targetLab[0], da = 500 * (fx - fy) - targetLab[1], db = 200 * (fy - fz) - targetLab[2];
+    return dL * dL + da * da + db * db;
+  }
+  // 1. で残した割合の中から、色に戻していちばん近いものを選ぶ
+  function refine(fit, targetLab) {
+    const comps = COMPS[fit.set.length];
+    let best = null;
+    for (const { ci } of fit.top) {
+      const d = colorDist(fit.set, comps[ci], targetLab);
+      if (!best || d < best.d) best = { set: fit.set, comp: comps[ci], d };
+    }
+    return { ...best, d: Math.sqrt(best.d) };
+  }
+  // 組み合わせ set の中で、すべての割合を色に戻して比べる（絵具置換のように、組み合わせが1つのとき）
+  function bestForSet(set, targetLab) {
+    const comps = COMPS[set.length];
+    let bestI = 0, bestD = Infinity;
+    for (let ci = 0; ci < comps.length; ci++) {
+      const d = colorDist(set, comps[ci], targetLab);
       if (d < bestD) { bestD = d; bestI = ci; }
     }
     return { set, comp: comps[bestI], d: Math.sqrt(bestD) };
@@ -125,20 +141,22 @@ const PaintDB = (() => {
   // 逆引き調色：使える絵具の中から最大4色・5%刻みで候補を探す
   // 手持ちが多いときは、2色の組み合わせで有望な絵具に絞ってから3色・4色を探す（計算時間を抑えるため）
   const MAX_POOL = 18;
+  const REFINE = 120; // 潜在表現の距離で上位のこの数の組み合わせだけ、色に戻して比べる
   // ラインが違うだけの同じ色名の絵具（例：レギュラーとベーシックスのチタニウムホワイト）は、1つの候補に同時に使わない
   const sameName = (set, p) => set.some((q) => q.name === p.name);
   function reverse(targetRgb, availableIds, top = 3) {
     const targetLab = Color.rgbToLab(targetRgb);
+    const zt = mixbox.rgbToLatent(...targetRgb);
     let pool = availableIds.map((id) => byId[id]).filter((p) => p && p.mixable);
     const found = [];
     const pairBest = new Map(pool.map((p) => [p, Infinity]));
     for (let i = 0; i < pool.length; i++) {
-      const one = bestForSet([pool[i]], targetLab);
+      const one = latentFit([pool[i]], zt);
       found.push(one);
       pairBest.set(pool[i], Math.min(pairBest.get(pool[i]), one.d));
       for (let j = i + 1; j < pool.length; j++) {
         if (pool[i].name === pool[j].name) continue;
-        const two = bestForSet([pool[i], pool[j]], targetLab);
+        const two = latentFit([pool[i], pool[j]], zt);
         found.push(two);
         pairBest.set(pool[i], Math.min(pairBest.get(pool[i]), two.d));
         pairBest.set(pool[j], Math.min(pairBest.get(pool[j]), two.d));
@@ -156,7 +174,7 @@ const PaintDB = (() => {
         if (pool[i].name === pool[j].name) continue;
         for (let k = j + 1; k < n; k++) {
           if (sameName([pool[i], pool[j]], pool[k])) continue;
-          found.push(bestForSet([pool[i], pool[j], pool[k]], targetLab));
+          found.push(latentFit([pool[i], pool[j], pool[k]], zt));
         }
       }
     }
@@ -165,11 +183,14 @@ const PaintDB = (() => {
     for (const s of seeds) {
       for (const p of pool) {
         if (s.set.includes(p) || sameName(s.set, p)) continue;
-        found.push(bestForSet([...s.set, p], targetLab));
+        found.push(latentFit([...s.set, p], zt));
       }
     }
     const seen = new Set();
     return found
+      .sort((a, b) => a.d - b.d)
+      .slice(0, REFINE)
+      .map((f) => refine(f, targetLab))
       .sort((a, b) => a.d - b.d)
       .slice(0, 60)
       .map((r) => finalize(r, targetLab))

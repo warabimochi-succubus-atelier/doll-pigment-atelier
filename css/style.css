@@ -316,7 +316,6 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tag.op-transparent { background: color-mix(in srgb, #3b82c4 14%, transparent); color: #2e6ea8; }
 .tag.op-semi { background: color-mix(in srgb, #8a6fc4 14%, transparent); color: #6c55a8; }
 .tag.op-opaque { background: var(--surface-2); color: var(--ink-2); }
-.tag.tag-measured { background: color-mix(in srgb, #3f9a6b 14%, transparent); color: #2f7d55; }
 .tag.tag-stop { background: color-mix(in srgb, #c45a3b 12%, transparent); color: #a8482e; }
 .tag-muted { background: transparent; border: 1px dashed var(--line); color: var(--ink-2); }
 .paint-filters { display: grid; gap: 10px; }
@@ -372,6 +371,8 @@ input.readonly:not([type=checkbox]) { background: var(--surface-2); color: var(-
 .about-icon { border-radius: 22px; box-shadow: 0 4px 16px rgba(60, 40, 45, .18); }
 .about-title { justify-content: center; font-size: 20px; margin-top: 14px; }
 .about-ver { font-size: 12px; color: var(--ink-2); }
+.about-credit { font-size: 12px; color: var(--ink-2); margin: 14px 0 0; }
+.about-credit a { color: inherit; }
 .about-desc { color: var(--ink-2); font-size: 13px; margin: 10px 0 0; }
 .about-author { margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--line); }
 .about-label { font-size: 11px; color: var(--ink-2); letter-spacing: .1em; }

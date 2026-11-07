@@ -1,6 +1,6 @@
-// ユーザーDB（ブラウザの IndexedDB に保存する。仕様書 6）
+// ユーザーDB（ブラウザの IndexedDB に保存する。仕様書 5）
 //
-// データベース dpa.atelier（github.io のドメインは他のアプリと共有するため、名前に dpa. を付ける。仕様書 6.1）
+// データベース dpa.atelier（github.io のドメインは他のアプリと共有するため、名前に dpa. を付ける。仕様書 5.1）
 //   entries … カラーエントリ（keyPath: id）
 //   meta    … 所持している絵具・前回のメディウムなど（keyPath: key）
 //   images  … 参考画像と記録画像（keyPath: id）。{ id, name, type, w, h, full: 本画像の Blob, thumb: サムネイルの Blob }
@@ -207,7 +207,7 @@ const Store = (() => {
     }
   }
 
-  // 初めてカラーを保存したときに、ブラウザに永続保存を要求する（仕様書 6）
+  // 初めてカラーを保存したときに、ブラウザに永続保存を要求する（仕様書 5）
   async function askPersist() {
     if (persistAsked) return;
     persistAsked = true;

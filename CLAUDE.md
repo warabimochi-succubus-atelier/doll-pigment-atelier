@@ -9,7 +9,8 @@
 
 ## 構成
 
-- ビルド不要の静的 PWA（HTML / CSS / JavaScript）。初期版（0.x。絵具の K・S は仮の値）。
+- ビルド不要の静的 PWA（HTML / CSS / JavaScript）。初期版（0.x。公開前）。
+- 混色は同梱の Mixbox（`js/vendor/mixbox.js`、CC BY-NC 4.0。営利目的では使えない）で計算する。このファイルは改変しない。
 - 起動: `python -m http.server 8765` → http://localhost:8765/
 - ファイル構成と現在の制限は [README.md](README.md) を参照。
 - 公開する変更では `js/version.js` の `APP_VERSION` を上げる（Service Worker のキャッシュ名に使う）。

@@ -973,7 +973,7 @@
     const lp = PaintDB.paints.filter((p) => p.line === line.id);
     const special = lp.filter((p) => !p.mixable).length;
     $('#paint-q').placeholder = lp.some((p) => p.no) ? '品番・色名で検索（例：008、ナフソール）' : '色名で検索（例：ナフソール）';
-    $('#paint-source').textContent = `出典：${line.chart}の${lp.some((p) => p.no) ? '品番・' : ''}色名・透明度。${line.name}は${lp.length}色で、うちメタリック・蛍光・イリディッセントの${special}色は計算対象外です。${lp.some((p) => p.measured) ? `「実測」の印がある${lp.filter((p) => p.measured).length}色は、白との混色見本の撮影から求めた値で計算します。それ以外の色見本は` : '色見本は'}チャートから取った仮の色で、実際の色とは異なります。`;
+    $('#paint-source').textContent = `出典：${line.chart}の${lp.some((p) => p.no) ? '品番・' : ''}色名・透明度。${line.name}は${lp.length}色で、うちメタリック・蛍光・イリディッセントの${special}色は計算対象外です。色見本はチャートから取った色で、実際の絵具の色とは異なります。混色はこの色から Mixbox で計算します。`;
     const W = PaintDB.byId[PaintDB.whiteOf[PF.line]?.id || PaintDB.WHITE_ID]; // 同じラインのチタニウムホワイトと混ぜる
     const list = shownPaints();
     $('#paint-rows').innerHTML = list.length ? list.map((p) => {
@@ -982,7 +982,7 @@
       return `<tr class="${owned ? '' : 'unowned'}">
         <td><input type="checkbox" data-own="${p.id}" ${owned ? 'checked' : ''} aria-label="${esc(p.name)}を所持"></td>
         <td><div class="pcell">${sw(p.hex)}<span>${p.no ? `<span class="pno mono">${p.no}</span>` : ''}${esc(p.name)}</span></div>
-          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.measured ? '<span class="tag tag-measured" title="白との混色見本の撮影から求めた K・S を計算に使います">実測</span>' : ''}${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div></td>
+          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div></td>
         <td>${p.mixable ? `<div class="ladder">${ladder.map(([a, w]) => {
           const hex = w ? Color.toHex(PaintDB.mixRgb([p, W], [a, w])) : p.hex;
           return `<span style="background:${hex}" title="${w ? `1:${w}` : '絵具のみ'} ${hex}"><small>${w ? `1:${w}` : '原色'}</small></span>`;
@@ -1024,7 +1024,7 @@
     } catch (e) { toast('このブラウザは永続保存の要求に対応していません'); }
     renderSettings();
   });
-  // ---- バックアップ（仕様書 6）----
+  // ---- バックアップ（仕様書 5）----
   // ZIP 1つに、data.json（ユーザーDB と画像の一覧）と images/ の画像（本画像とサムネイル）を入れる
   const BACKUP_FORMAT = 2;
   const extOf = (type) => (type === 'image/png' ? 'png' : type === 'image/webp' ? 'webp' : 'jpg');
