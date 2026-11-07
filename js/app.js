@@ -1,5 +1,5 @@
 // 画面ロジック
-(() => {
+(async () => {
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -16,6 +16,12 @@
     clearTimeout(toast.t);
     toast.t = setTimeout(() => (t.hidden = true), 2600);
   }
+  const SAVE_FAILED = '保存できませんでした。端末の空き容量が不足している可能性があります（画像を減らしてください）';
+  // 書き込みの結果を待ち、保存できなかったら知らせる（所持の設定など、結果を待たずに画面を進める操作用）
+  const warnIfFailed = (p) => p.then((ok) => { if (!ok) toast(SAVE_FAILED); return ok; });
+
+  // ユーザーDB（IndexedDB）を読み込んでから画面を作る
+  const boot = await Store.init();
 
   // ---------------- 状態 ----------------
   const S = {
@@ -407,7 +413,7 @@
     const sub = e.target.closest('[data-sub]');
     if (sub) {
       const i = +sub.dataset.sub, pid = sub.dataset.paint;
-      Store.setOwned(pid, false);
+      warnIfFailed(Store.setOwned(pid, false));
       const res = PaintDB.substitute(S.candidates[i], pid, representative(), owned());
       if (!res) return toast('代替できる絵具がありません');
       S.candidates[i] = res;
@@ -582,7 +588,7 @@
     form.oninput = markDirty;
     form.onchange = markDirty;
 
-    form.onclick = (ev) => {
+    form.onclick = async (ev) => {
       const b = ev.target.closest('button');
       if (!b) return;
       const st = b.closest('.stars-input');
@@ -591,14 +597,15 @@
       if (act === 'close') { ev.preventDefault(); dlg.close(); }
       if (act === 'delete') {
         if (!confirm(`「${e.name}」を削除します。よろしいですか？`)) return;
-        Store.remove(e.id); dlg.close(); renderLibrary(); toast('削除しました');
+        const ok = await Store.remove(e.id);
+        dlg.close(); renderLibrary(); toast(ok ? '削除しました' : '削除できませんでした');
       }
       if (act === 'recall') {
         // 書き換えてあれば、先に保存してから呼び出す
         if (dirty) {
           const data = collect();
           if (!data.name) return toast('名称を入力してください');
-          if (!saveEntry(data)) return;
+          if (!(await saveEntry(data))) return;
           toast('変更を保存しました');
         }
         dlg.close();
@@ -630,23 +637,28 @@
       };
     }
 
-    function saveEntry(data) {
-      const ok = Store.upsert(data);
-      Store.setLastMedium(data.cond.medium);
-      if (!ok) { toast('保存容量が不足しています（画像を減らしてください）'); return false; }
+    async function saveEntry(data) {
+      const ok = await Store.upsert(data);
+      if (!ok) { toast(SAVE_FAILED); return false; }
+      await Store.setLastMedium(data.cond.medium);
       renderLibrary();
       return true;
     }
 
-    form.onsubmit = (ev) => {
+    form.onsubmit = async (ev) => {
       ev.preventDefault();
       const act = ev.submitter?.dataset.act;
       const data = collect();
       if (!data.name) return toast('名称を入力してください');
       if (act === 'overwrite') { data.id = opt.baseId; data.createdAt = Store.get(opt.baseId)?.createdAt || Date.now(); }
       else if (act === 'new') { data.id = Store.uid(); data.createdAt = Date.now(); }
+      // 保存できてから閉じる（保存できなければ、書いた内容を残したままにする）
+      const btns = $$('.dlg-foot button', form);
+      btns.forEach((x) => (x.disabled = true));
+      const ok = await saveEntry(data);
+      btns.forEach((x) => (x.disabled = false));
+      if (!ok) return;
       dlg.close();
-      if (!saveEntry(data)) return;
       toast(act === 'overwrite' ? `レシピ帳の「${data.name}」を上書き保存しました`
         : act === 'new' ? `「${data.name}」をレシピ帳に${opt.baseId ? '追加' : '保存'}しました`
           : `「${data.name}」の変更を保存しました`);
@@ -855,7 +867,7 @@
   }
   $('#paint-rows').addEventListener('change', (e) => {
     const id = e.target.dataset.own;
-    if (id) { Store.setOwned(id, e.target.checked); renderPaints(); }
+    if (id) { warnIfFailed(Store.setOwned(id, e.target.checked)); renderPaints(); }
   });
   $('#paint-lines').addEventListener('click', (e) => {
     const b = e.target.closest('[data-line]');
@@ -866,7 +878,7 @@
   $('#btn-unown-shown').addEventListener('click', () => {
     const ids = shownPaints().map((p) => p.id);
     if (ids.length > 10 && !confirm(`表示中の${ids.length}色の所持を解除します。よろしいですか？`)) return;
-    Store.setOwnedMany(ids, false);
+    warnIfFailed(Store.setOwnedMany(ids, false));
     renderPaints();
   });
 
@@ -875,6 +887,7 @@
     let persisted = '不明';
     try { persisted = (await navigator.storage?.persisted?.()) ? '許可済み' : '未許可'; } catch (e) { /* noop */ }
     $('#storage-info').innerHTML = `<span>カラーエントリ</span><b>${Store.entries().length} 件</b>
+      <span>保存先</span><b>${Store.available ? 'この端末のブラウザ（IndexedDB）' : '一時的（画面を閉じると消えます）'}</b>
       <span>使用容量</span><b>${(Store.sizeBytes() / 1024).toFixed(1)} KB</b>
       <span>永続保存</span><b>${persisted}</b>`;
   }
@@ -895,24 +908,33 @@
   });
   $('#import-input').addEventListener('change', async (e) => {
     const f = e.target.files[0];
+    e.target.value = ''; // 同じファイルを選び直せるようにする
     if (!f) return;
+    let data;
     try {
-      const data = JSON.parse(await f.text());
+      data = JSON.parse(await f.text());
       if (!Array.isArray(data.entries)) throw new Error('format');
-      if (!confirm(`${data.entries.length} 件のカラーをインポートします。現在のデータは置き換わります。`)) return;
-      Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], lastMedium: data.lastMedium });
-      toast('インポートしました');
-      renderSettings();
-    } catch (err) { toast('バックアップファイルを読み込めませんでした'); }
-    e.target.value = '';
+    } catch (err) { return toast('バックアップファイルを読み込めませんでした'); }
+    if (!confirm(`${data.entries.length} 件のカラーをインポートします。現在のデータは置き換わります。`)) return;
+    const ok = await Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], lastMedium: data.lastMedium });
+    toast(ok ? 'インポートしました' : SAVE_FAILED);
+    afterDataChange();
   });
-  $('#btn-reset-sample').addEventListener('click', () => {
+  // データを入れ替えたら、レシピ帳と調色画面の表示（近い色・調色候補）を更新する
+  function afterDataChange() {
+    renderLibrary(); renderCandidates(); renderMix(); scheduleReverse(); renderSettings();
+  }
+  $('#btn-reset-sample').addEventListener('click', async () => {
     if (!confirm('サンプルデータに戻します。現在のデータは消えます。')) return;
-    Store.resetSample(); toast('サンプルデータに戻しました'); renderSettings();
+    const ok = await Store.resetSample();
+    toast(ok ? 'サンプルデータに戻しました' : SAVE_FAILED);
+    afterDataChange();
   });
-  $('#btn-wipe').addEventListener('click', () => {
+  $('#btn-wipe').addEventListener('click', async () => {
     if (!confirm('すべてのカラーエントリを削除します。元に戻せません。')) return;
-    Store.wipe(); toast('削除しました'); renderSettings();
+    const ok = await Store.wipe();
+    toast(ok ? '削除しました' : '削除できませんでした');
+    afterDataChange();
   });
 
   // ================= このアプリについて =================
@@ -925,6 +947,8 @@
   // ---------------- 起動 ----------------
   renderImages(); renderExtracted(); renderCandidates(); renderMix();
   route();
+  if (!boot.ok) toast('このブラウザでは端末に保存できないため、画面を閉じるとデータが消えます（プライベートブラウズでは保存できません）');
+  else if (boot.migrated) toast('以前の版のデータを、新しい保存先（IndexedDB）に移しました');
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

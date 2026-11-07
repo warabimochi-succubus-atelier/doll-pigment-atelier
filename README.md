@@ -35,7 +35,7 @@ GitHub Pages で公開します（仕様書 6.1）。
 
 - 絵具の K・S は実測ではなく、カラーチャートの色見本から取った仮の色と仮の着色力から、RGB 3チャンネルで近似した値です（`js/paints-data.js`、`js/km.js`）。3.5 の見本撮影による推定は未実装です。
 - メディウムは予測色の計算には含めていません。
-- 保存先は localStorage です（本実装では IndexedDB）。画像は縮小したサムネイルだけを保存します。
+- 保存先はブラウザの IndexedDB（データベース `dpa.atelier`）です。以前の版の localStorage（`dpa.userdb.v3`）のデータは、初回の起動で移します。画像は縮小したサムネイルをカラーエントリの中に保存しています（本画像の保存とバックアップは未実装）。
 - サンプルデータの調色記録は、起動時に代表色を逆引きして作っています。
 
 ## ファイル構成
@@ -48,7 +48,7 @@ css/style.css         スタイル（ライト / ダーク、スマホ下部タ�
 js/color.js           sRGB / 線形 / Lab 変換、CIEDE2000
 js/paints-data.js     標準DB のデータ（リキテックス レギュラー・ソフト・ベーシックス 307色：品番・色名・仮の色・透明度・系統・販売中止）
 js/km.js              Kubelka-Munk 混色、逆引き調色、絵具置換
-js/store.js           ユーザーDB（localStorage）とサンプルデータ
+js/store.js           ユーザーDB（IndexedDB）とサンプルデータ
 js/picker.js          画像の範囲選択
 js/sample.js          サンプル画像（アニメ系ドールの顔、照明違い2枚）の生成
 js/app.js             画面ロジック
