@@ -67,7 +67,6 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 80px; }
   background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 16px; margin-bottom: 16px; box-shadow: var(--shadow); min-width: 0;
 }
-.muted-card { background: var(--surface-2); box-shadow: none; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
 .row { display: flex; align-items: center; }
 .row.between { justify-content: space-between; gap: 8px; }
@@ -122,7 +121,6 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent-2); color: var(--accent); font-weight: 600; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
-.badge-future { background: var(--accent-2); color: var(--accent); }
 
 /* ---- images ---- */
 .img-strip { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
@@ -325,8 +323,6 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
 .ladder { display: flex; gap: 3px; }
 .ladder span { width: 52px; height: 30px; border-radius: 6px; position: relative; border: 1px solid rgba(0,0,0,.08); }
 .ladder small { position: absolute; left: 4px; bottom: 0; font-size: 9px; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,.7); }
-.steps { margin: 0 0 12px; padding-left: 20px; color: var(--ink-2); }
-.steps .auto { color: var(--accent); }
 .plain { margin: 0; padding-left: 18px; color: var(--ink-2); }
 
 /* ---- dialog ---- */
