@@ -107,6 +107,7 @@ icons/source/         アイコンの元画像
 images/author-logo.webp  作者ロゴ（「このアプリについて」ダイアログ）
 manifest.webmanifest  PWA マニフェスト
 sw.js                 Service Worker（オフライン用。新しい版が届いたら画面に知らせる）
+.nojekyll             GitHub Pages の Jekyll 変換を止め、ファイルをそのまま配信する（中身は空）
 tools/dev-server.py   開発用のサーバー（キャッシュさせずに配信する）
 LICENSE               MIT License
 NOTICE.md             ロゴ・アイコンと Mixbox の権利について
