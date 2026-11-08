@@ -38,10 +38,14 @@ The suggested mixes are only a starting point: the paint colors come from the pr
 ## 起動
 
 ```bash
-python -m http.server 8765
+python tools/dev-server.py
 ```
 
-ブラウザで http://localhost:8765/ を開きます（`index.html` を直接開いても動きます。Service Worker だけは http で配信したときに有効になります）。
+ブラウザで http://localhost:8765/ を開きます（`index.html` を直接開いても動きます。Service Worker だけは http で配信したときに有効になります）。ポート番号は `python tools/dev-server.py 8000` のように変えられます。
+
+`tools/dev-server.py` は `python -m http.server` と同じようにファイルを配信し、すべての応答に `Cache-Control: no-cache` を付けます。`python -m http.server` はキャッシュの指示を送らないため、ブラウザがファイルをキャッシュから読み、変更が反映されないことがあります。
+
+スマホで試すときは、PC と同じ Wi-Fi につなぎ、起動時に表示される `http://<PC の IP アドレス>:8765/` を開きます。LAN のアドレスは https でも `localhost` でもないので、Service Worker は動きません（オフライン動作と「新しい版があります」の案内は確かめられません）。以前に `python -m http.server` で開いていた端末は、古いファイルがキャッシュに残っていることがあるため、一度そのサイトのデータを消してください（iOS は 設定 → アプリ → Safari → 詳細 → Web サイトデータ。そのアドレスで保存したデータも消えます）。
 
 ## 公開
 
@@ -103,6 +107,7 @@ icons/source/         アイコンの元画像
 images/author-logo.webp  作者ロゴ（「このアプリについて」ダイアログ）
 manifest.webmanifest  PWA マニフェスト
 sw.js                 Service Worker（オフライン用。新しい版が届いたら画面に知らせる）
+tools/dev-server.py   開発用のサーバー（キャッシュさせずに配信する）
 LICENSE               MIT License
 NOTICE.md             ロゴ・アイコンと Mixbox の権利について
 ```
