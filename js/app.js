@@ -576,9 +576,10 @@
         <div class="mix-row" data-i="${i}">
           ${sw(PaintDB.byId[m.paintId]?.hex || '#ccc')}
           <select data-k="paintId">${paintOptions(m.paintId)}</select>
-          <input type="number" data-k="pct" value="${m.pct}" min="0" max="100" step="5" class="mono">
-          <span class="unit">%</span>
           <button class="icon-btn" data-rm="${i}" title="削除">×</button>
+          <input type="range" data-k="pct" value="${m.pct}" min="0" max="100" step="1" aria-label="割合">
+          <input type="number" data-k="pct" value="${m.pct}" min="0" max="100" step="1" class="mono" aria-label="割合（%）">
+          <span class="unit">%</span>
         </div>`).join('')
       : '<div class="empty small">候補の「この候補で調整する」か「＋ 絵具を追加」から始めます</div>';
     renderMixPreview();
@@ -602,8 +603,16 @@
     if (!row) return;
     const m = S.mix[+row.dataset.i];
     const k = e.target.dataset.k;
-    m[k] = k === 'pct' ? Math.max(0, +e.target.value || 0) : e.target.value;
-    if (k === 'paintId') renderMix(); else renderMixPreview();
+    m[k] = k === 'pct' ? Math.min(100, Math.max(0, Math.round(+e.target.value || 0))) : e.target.value;
+    if (k === 'paintId') return renderMix();
+    // スライダーと数値の欄は同じ割合を表すので、操作していないほうを合わせる
+    row.querySelectorAll('[data-k="pct"]').forEach((el) => { if (el !== e.target) el.value = m.pct; });
+    renderMixPreview();
+  });
+  // 範囲外や小数を入れたときは、入力を終えた時点で数値の欄を記録する値に直す
+  $('#mix-rows').addEventListener('change', (e) => {
+    const row = e.target.closest('.mix-row');
+    if (row && e.target.type === 'number') e.target.value = S.mix[+row.dataset.i].pct;
   });
   $('#mix-rows').addEventListener('click', (e) => {
     const rm = e.target.closest('[data-rm]');

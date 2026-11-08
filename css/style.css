@@ -107,7 +107,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 80px; }
 .icon-btn { border: 0; background: transparent; cursor: pointer; font-size: 18px; color: var(--ink-2); padding: 0 6px; line-height: 1; }
 .link { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 12px; padding: 0; }
 .link-danger { color: var(--bad); font-size: 13px; padding: 8px 4px; text-decoration: underline; text-underline-offset: 3px; }
-input:not([type=checkbox]):not([type=file]), select, textarea {
+input:not([type=checkbox]):not([type=file]):not([type=range]), select, textarea {
   border: 1px solid var(--line); border-radius: 9px; padding: 7px 10px; background: var(--surface); min-width: 0;
 }
 input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent); outline-offset: 0; }
@@ -224,8 +224,16 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 /* ---- mix ---- */
 .mix-wrap { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
 .mix-rows { display: grid; gap: 8px; align-content: start; }
-.mix-row { display: grid; grid-template-columns: 18px 1fr 80px 16px 24px; gap: 8px; align-items: center; }
-.mix-row input { text-align: right; }
+.mix-row {
+  display: grid; grid-template-columns: 18px 1fr 64px 16px 24px; gap: 4px 8px; align-items: center;
+  grid-template-areas: "sw name name name rm" ". range num unit .";
+}
+.mix-row > .sw { grid-area: sw; }
+.mix-row select { grid-area: name; }
+.mix-row [data-rm] { grid-area: rm; }
+.mix-row input[type=range] { grid-area: range; width: 100%; margin: 0; accent-color: var(--accent); }
+.mix-row input[type=number] { grid-area: num; text-align: right; }
+.mix-row .unit { grid-area: unit; }
 .unit { color: var(--ink-2); }
 
 /* ---- banner / toast ---- */
