@@ -38,7 +38,7 @@ const Store = (() => {
       return e;
     };
     return [
-      withMix(mk({ name: 'DDH-29 チークA', hex: '#E9A3A0', rating: 5, comment: '少し暖色寄り。3回重ねる' }, 2)),
+      withMix(mk({ name: 'コーラルピンクチーク', hex: '#E9A3A0', rating: 5, comment: '少し暖色寄り。3回重ねる' }, 2)),
       withMix(mk({ name: '幼い魔性チーク', hex: '#E494A6', rating: 5, comment: '頬の中心だけ重ねる（4回）。青みピンク',
         cond: { head: 'DDH-27', skin: 'セミホワイト', topcoat: 'つや消し', brand: DEFAULT_BRAND, medium: 'painting-medium' } }, 9)),
       withMix(mk({ name: 'くすみローズの唇', hex: '#B9646C', rating: 4, comment: 'グラデの濃い側' }, 20)),

@@ -771,7 +771,7 @@
       <div class="dlg-head">
         <div class="dlg-sw" style="background:${e.hex}"></div>
         <div class="grow">
-          <input name="name" class="title-input" placeholder="名称（例：DDH-29 チークA）" value="${esc(e.name)}" required>
+          <input name="name" class="title-input" placeholder="名称（例：コーラルピンクチーク）" value="${esc(e.name)}" required>
           <div class="mono small">${e.hex} · RGB ${rgb.join(', ')} · Lab ${Color.fmtLab(Color.rgbToLab(rgb))}</div>
         </div>
         <button type="button" class="icon-btn" data-act="close" title="閉じる" ${e.name ? 'autofocus' : ''}>×</button>
