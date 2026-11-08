@@ -87,7 +87,6 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 80px; }
 .sample-try .link { font-size: 13px; text-decoration: underline; text-underline-offset: 3px; }
 .note { font-size: 12px; color: var(--ink-2); }
 .note.warn { color: var(--ok); }
-.warn-t { color: var(--bad); }
 
 /* ---- buttons / inputs ---- */
 .btn {
@@ -97,6 +96,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 80px; }
 }
 .btn:hover { border-color: var(--accent); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+a.btn { color: inherit; text-decoration: none; } /* リンクで作ったボタンも、ほかのボタンと同じ見た目にする */
 .btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn-primary:hover { filter: brightness(1.06); }
 .btn-ghost { background: transparent; }
@@ -133,7 +133,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .thumb-tag { position: absolute; left: 4px; bottom: 4px; font-size: 10px; padding: 0 5px; border-radius: 6px; background: rgba(0,0,0,.55); color: #fff; }
 .thumb-tag.own { background: rgba(61,139,99,.85); }
-.thumb-x { position: absolute; right: 2px; top: 0; color: #fff; text-shadow: 0 0 3px #000; font-size: 15px; }
+.thumb-wrap { position: relative; flex: none; }
+.img-strip .thumb-x {
+  position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px;
+  background: rgba(0,0,0,.6); color: #fff; font-size: 15px; line-height: 24px; cursor: pointer;
+}
+.img-strip .thumb-x:hover { background: rgba(0,0,0,.8); }
 .img-stage {
   margin-top: 10px; border-radius: 12px; background: var(--surface-2); min-height: 260px;
   display: grid; place-items: center; overflow: hidden;
@@ -207,6 +212,11 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .cand-sw > div { flex: 1; min-height: 44px; position: relative; }
 .cand-sw.tall { width: 100%; flex-direction: row; height: 88px; margin-bottom: 10px; }
 .cand-sw span { position: absolute; left: 4px; bottom: 2px; font-size: 10px; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,.6); }
+/* 明るい色の上の文字は濃い色にする（白い文字では読めないため） */
+.cand-sw .on-light span, .ladder .on-light small { color: rgba(40, 28, 32, .78); text-shadow: none; }
+/* 調色候補の絵具名は省略せずに折り返す（品番とラインまで読めるように） */
+.cands .pname { white-space: normal; overflow: visible; line-height: 1.35; }
+.sub-btn { padding: 2px 8px; }
 .cand-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .cand-body > .row { width: 100%; }
 .recipe { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; gap: 4px; }
@@ -252,12 +262,15 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
   100% { box-shadow: 0 0 0 3px transparent, var(--shadow); }
 }
 @media (prefers-reduced-motion: reduce) { .card.flash { animation: none; } }
+/* 案内は画面上部（ヘッダーのすぐ下）に出す。下に出すと入力欄や保存ボタンに重なるため。
+   重なっても操作を妨げないよう、クリックは下の要素に通す */
 .toast {
-  position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50;
+  position: fixed; inset: auto; left: 50%; top: 64px; transform: translateX(-50%); z-index: 50; margin: 0; border: 0;
+  width: max-content; max-width: calc(100% - 32px); pointer-events: none;
   background: var(--ink); color: var(--bg); padding: 10px 18px; border-radius: 12px; font-size: 13px;
-  box-shadow: 0 6px 24px rgba(0,0,0,.2); max-width: calc(100% - 32px);
+  box-shadow: 0 6px 24px rgba(0,0,0,.2);
 }
-.toast[hidden] { display: none; }
+.toast[hidden], .toast:empty { display: none; }
 .update-bar {
   display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap;
   margin: 12px auto 0; max-width: 1200px; width: calc(100% - 32px);
@@ -315,7 +328,7 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .paints th:first-child, .paints td:first-child { text-align: center; } /* 「所持」列 */
 .paints td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .paints .num { text-align: right; white-space: nowrap; }
-.paints tr.unowned td:not(:first-child) { opacity: .55; }
+.paints.fade-unowned tr.unowned td:not(:first-child) { opacity: .55; }
 .paints td:first-child input { width: 18px; height: 18px; }
 .pcell { display: flex; gap: 8px; align-items: center; min-width: 9em; }
 .pno { display: inline-block; min-width: 2.6em; margin-right: 4px; font-size: 12px; color: var(--ink-2); }
@@ -342,7 +355,6 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
 .dialog form { display: flex; flex-direction: column; max-height: calc(100dvh - 32px); }
 .dlg-head { display: flex; gap: 14px; align-items: center; padding: 16px 18px; border-bottom: 1px solid var(--line); }
 .dlg-sw { width: 56px; height: 56px; border-radius: 12px; border: 1px solid rgba(0,0,0,.1); flex: none; }
-input.readonly:not([type=checkbox]) { background: var(--surface-2); color: var(--ink-2); cursor: default; }
 .title-input { width: 100%; font-size: 17px !important; font-weight: 700; border-color: transparent !important; padding: 2px 6px !important; margin-left: -6px; }
 .title-input:hover { border-color: var(--line) !important; }
 .dlg-body { padding: 4px 18px 16px; overflow-y: auto; }
@@ -405,11 +417,13 @@ input.readonly:not([type=checkbox]) { background: var(--surface-2); color: var(-
   }
   .tabs a { padding: 6px 8px; font-size: 12px; }
   main { padding: 14px 16px 96px; }
-  .toast { bottom: 84px; }
+  .toast { top: calc(max(8px, env(safe-area-inset-top)) + 52px); }
   .form-grid, .grid-2.tight { grid-template-columns: 1fr; }
   .recipe li { grid-template-columns: 18px 1fr 40px 40px; }
-  .recipe li .link { grid-column: 2 / -1; justify-self: start; }
+  .recipe li .sub-btn { grid-column: 2 / -1; justify-self: start; }
   .cands { grid-template-columns: 1fr; }
+  .cand { gap: 10px; padding: 10px; }
+  .cand-sw { width: 40px; }
   .filters > * { flex: 1 1 40%; }
   .filters > .grow { flex-basis: 100%; }
   .ladder span { width: 30px; height: 26px; }

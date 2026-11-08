@@ -6,15 +6,39 @@
   const stars = (n) => '★'.repeat(n) + '<span class="off">' + '★'.repeat(5 - n) + '</span>';
   const paintName = (id) => PaintDB.byId[id]?.fullLabel || id; // 品番＋色名（ライン）
   const sw = (hex, cls = '') => `<span class="sw ${cls}" style="background:${hex}"></span>`;
+  // 明るい色の上に文字を載せるときは、白ではなく濃い色の文字にする（白との混色見本や、目標・混色の見本）
+  const onLight = (hex) => (Color.rgbToLab(Color.parseHex(hex))[0] > 66 ? 'on-light' : '');
   const mixableOwnedCount = () => PaintDB.paints.filter((p) => p.mixable && Store.isOwned(p.id)).length;
   const owned = () => PaintDB.paints.map((p) => p.id).filter(Store.isOwned);
 
+  const isTouch = matchMedia('(pointer: coarse)').matches; // スマホ・タブレット（タッチ操作の端末）
+
+  // 案内（トースト）。ダイアログを開いていても見えるよう、最前面（top layer）に出す。
+  // あとから開いたダイアログが手前に来るので、ダイアログを開いたら raiseToast で出し直す
+  const toastEl = $('#toast');
+  const popoverOk = typeof toastEl.showPopover === 'function';
+  const toastOpen = () => (popoverOk ? toastEl.matches(':popover-open') : !toastEl.hidden);
+  function showToastEl() {
+    if (!popoverOk) { toastEl.hidden = false; return; }
+    if (toastOpen()) toastEl.hidePopover();
+    toastEl.showPopover();
+  }
+  function hideToastEl() {
+    if (!popoverOk) toastEl.hidden = true;
+    else if (toastOpen()) toastEl.hidePopover();
+  }
+  if (!popoverOk) toastEl.hidden = true;
   function toast(msg) {
-    const t = $('#toast');
-    t.textContent = msg;
-    t.hidden = false;
+    toastEl.textContent = msg;
+    showToastEl();
     clearTimeout(toast.t);
-    toast.t = setTimeout(() => (t.hidden = true), Math.max(2600, msg.length * 90)); // 長い案内は読み終えられるよう長めに出す
+    toast.t = setTimeout(hideToastEl, Math.max(2600, msg.length * 90)); // 長い案内は読み終えられるよう長めに出す
+  }
+  const raiseToast = () => { if (toastOpen()) showToastEl(); };
+  // ダイアログを開く（表示中の案内は、ダイアログより手前に出し直す）
+  function openModal(d) {
+    d.showModal();
+    raiseToast();
   }
   const SAVE_FAILED = '保存できませんでした。端末の空き容量が不足している可能性があります（画像を減らしてください）';
   // 書き込みの結果を待ち、保存できなかったら知らせる（所持の設定など、結果を待たずに画面を進める操作用）
@@ -34,6 +58,7 @@
     similarAll: false, // レシピ帳の近い色をすべて表示するか
     candidates: [],
     candKey: null,     // 表示中の調色候補を計算した「代表色＋所持絵具」（変わったら自動で計算し直す）
+    subbing: null,     // 持っていない絵具を置き換えようとしている候補の番号（置き換えのボタンを出す）
     mix: [],           // [{ paintId, pct }]
     recalled: null,    // 呼び出し元エントリ id
   };
@@ -116,12 +141,15 @@
   }
 
   function renderImages() {
+    // × はサムネイルのボタンの外に置き、押しやすい大きさにする（画像の切り替えと押し間違えないように）
     $('#img-strip').innerHTML = S.images.map((i) => `
-      <button class="thumb ${i.id === S.active ? 'on' : ''}" data-id="${i.id}" title="${esc(i.name)}">
-        <img src="${i.thumb}" alt="">
-        ${i.gains ? '<span class="thumb-tag own">補正済</span>' : ''}
-        <span class="thumb-x" data-del="${i.id}" title="削除">×</span>
-      </button>`).join('');
+      <div class="thumb-wrap">
+        <button class="thumb ${i.id === S.active ? 'on' : ''}" data-id="${i.id}" title="${esc(i.name)}">
+          <img src="${i.thumb}" alt="">
+          ${i.gains ? '<span class="thumb-tag own">補正済</span>' : ''}
+        </button>
+        <button class="thumb-x" data-del="${i.id}" title="この画像を外す" aria-label="「${esc(i.name)}」を外す">×</button>
+      </div>`).join('');
     const img = curImg();
     $('#img-tools').hidden = !img;
     $('#btn-gray-reset').hidden = !img?.gains;
@@ -139,6 +167,10 @@
     const del = e.target.closest('[data-del]');
     if (del) {
       const id = del.dataset.del;
+      // この画像から取った抽出色も消えるので、抽出色があるときは確かめる
+      const n = S.extracted.filter((x) => x.imgId === id).length;
+      const name = S.images.find((i) => i.id === id)?.name || '';
+      if (n && !confirm(`「${name}」を外します。この画像から取った抽出色（${n}色）も消えます。`)) return;
       S.images = S.images.filter((i) => i.id !== id);
       S.extracted = S.extracted.filter((x) => x.imgId !== id);
       if (S.active === id) S.active = S.images[0]?.id || null;
@@ -176,7 +208,6 @@
   });
 
   // ---- 操作モード（範囲選択 / 移動 / グレーカード補正）----
-  const isTouch = matchMedia('(pointer: coarse)').matches;
   function updateHint() {
     $('#img-hint').textContent = isTouch
       ? (picker.grayMode
@@ -250,7 +281,7 @@
     }
     try {
       await startCamera();
-      camDlg.showModal();
+      openModal(camDlg);
     } catch (err) {
       stopCamera();
       toast(err?.name === 'NotAllowedError'
@@ -295,16 +326,23 @@
     return S.extracted.length ? averageRgb(S.extracted) : null;
   }
 
-  // 外れた色：その色を除いた残りの平均から ΔE2000 がこれ以上離れている抽出色（3色以上のとき）
+  // 外れた色：その色を除いた残りの平均から ΔE2000 がこれ以上離れている抽出色（3色以上のとき）。
+  // ただし、残りの抽出色のばらつき（残りの平均から最も離れた色の ΔE）の2倍以上離れているときに限る。
+  // 照明の違う画像から取って色が広がっているときに、両端の色にまで印が付かないようにするため
   const OUTLIER_DE = 10;
+  const OUTLIER_SPREAD_RATIO = 2;
   function outliers() {
     const xs = S.extracted;
     const out = new Map(); // id → ΔE
     if (xs.length < 3) return out;
+    const labs = new Map(xs.map((x) => [x.id, Color.rgbToLab(x.rgb)]));
     for (const x of xs) {
-      const rest = averageRgb(xs.filter((y) => y !== x));
-      const de = Color.dE00(Color.rgbToLab(x.rgb), Color.rgbToLab(rest));
-      if (de >= OUTLIER_DE) out.set(x.id, de);
+      const rest = xs.filter((y) => y !== x);
+      const restLab = Color.rgbToLab(averageRgb(rest));
+      const de = Color.dE00(labs.get(x.id), restLab);
+      if (de < OUTLIER_DE) continue;
+      const spread = Math.max(...rest.map((y) => Color.dE00(labs.get(y.id), restLab)));
+      if (de >= spread * OUTLIER_SPREAD_RATIO) out.set(x.id, de);
     }
     return out;
   }
@@ -327,12 +365,12 @@
       ? xs.map((x) => {
         const img = S.images.find((i) => i.id === x.imgId);
         const de = out.get(x.id);
-        return `<div class="chip ${de ? 'outlier' : ''}" data-id="${x.id}" ${de ? `title="ほかの抽出色から ΔE ${de.toFixed(1)} 離れています"` : ''}>
+        return `<div class="chip ${de ? 'outlier' : ''}" data-id="${x.id}" ${de ? 'title="照明の違いや、取る場所のずれがないか確認してください。外れた色なら × で除きます（意図して条件の違う画像を入れている場合は、そのままで構いません）"' : ''}>
           ${sw(Color.toHex(x.rgb))}
           <span><b>${x.label}</b> ${Color.toHex(x.rgb)}<small>${esc(img?.name || '')}</small>${de ? `<em class="flag">ほかと色が離れています（ΔE ${de.toFixed(1)}）</em>` : ''}</span>
           <button class="chip-x" data-del="${x.id}" title="取り消す" aria-label="${x.label} を取り消す">×</button></div>`;
       }).join('')
-      : '<div class="empty small">手順1の画像上をドラッグすると、ここに抽出色が並びます</div>';
+      : `<div class="empty small">${isTouch ? '手順1の画像をタップする（範囲は長押ししてから囲む）' : '手順1の画像をクリックかドラッグする'}と、ここに抽出色が並びます</div>`;
     // 呼び出し・数値指定の色を代表色にしているときだけ案内する
     $('#method-hint').hidden = !S.fixed;
     $('#method-hint').textContent = S.fixed
@@ -368,15 +406,10 @@
       const used = new Set(S.extracted.map((x) => x.imgId));
       const imgs = S.images.filter((i) => used.has(i.id));
       const uncorrected = imgs.filter((i) => !i.gains).length;
-      note = `<div class="note">${S.extracted.length}色 / ${imgs.length}枚から算出</div>`;
-      const out = outliers();
-      if (out.size) {
-        const labels = S.extracted.filter((x) => out.has(x.id)).map((x) => x.label).join('・');
-        note += `<div class="note warn">ほかと色が離れた抽出色（${labels}）は、× で除いてください。意図して条件の違う画像を入れている場合は、そのままで構いません</div>`;
-      }
+      // 外れた色は抽出色のチップに印を付けるので、ここには書かない
+      note = `<div class="note">${S.extracted.length}色 / ${imgs.length}枚から算出${uncorrected ? `（補正していない画像を含むため、色は目安）` : ''}</div>`;
       const gap = pairGap();
       if (gap) note += `<div class="note warn">2つの抽出色の差が大きめです（ΔE ${gap.toFixed(1)}）。照明の違いや、取る場所がずれていないか確認してください</div>`;
-      if (uncorrected) note += `<div class="note warn">グレーカード補正していない画像（${uncorrected}枚）を含むため、色は目安です。グレーカードが写っている画像は補正すると精度が上がります</div>`;
     }
     $('#target').innerHTML = targetCard(rgb, note);
     renderSimilar();
@@ -494,6 +527,7 @@
       if (!res) return;
       S.candidates = res.cands;
       S.candTime = res.ms;
+      S.subbing = null;
       S.candKey = key;
       renderCandidates();
     }, REVERSE_DELAY);
@@ -513,25 +547,33 @@
         : '<div class="empty">調色候補は、持っている絵具だけで計算します。<br>先に絵具箱で、持っている絵具を選んでください。<div class="sample-try"><a class="btn btn-ghost btn-s" href="#paints">絵具箱を開く</a></div></div>';
       return;
     }
-    $('#candidates').innerHTML = S.candidates.map((c, i) => `
+    const target = rgb ? Color.toHex(rgb) : '#cccccc';
+    $('#candidates').innerHTML = S.candidates.map((c, i) => {
+      const subbing = S.subbing === i; // 「持っていない絵具がある」を押して、置き換える絵具を選んでいるところ
+      return `
       <div class="cand">
         <div class="cand-sw">
-          <div style="background:${rgb ? Color.toHex(rgb) : '#ccc'}"><span>目標</span></div>
-          <div style="background:${c.hex}"><span>混色</span></div>
+          <div class="${onLight(target)}" style="background:${target}"><span>目標</span></div>
+          <div class="${onLight(c.hex)}" style="background:${c.hex}"><span>混色</span></div>
         </div>
         <div class="cand-body">
           <div class="row between"><b>候補 ${i + 1}</b>${deBadge(c.de)}</div>
           ${c.substituted ? `<div class="note">${esc(paintName(c.substituted.from))} → ${esc(paintName(c.substituted.to))} に置換して再計算</div>` : ''}
+          ${subbing ? '<div class="note">持っていない絵具の「置き換える」を押してください。所持している絵具から代わりを探して計算し直します</div>' : ''}
           <ul class="recipe">
             ${c.items.map((x) => `<li>${sw(PaintDB.byId[x.paintId].hex)}<span class="pname">${esc(paintName(x.paintId))}</span>
               <span class="bar"><i style="width:${x.pct}%"></i></span><b class="mono">${x.pct}%</b>
-              <button class="link" data-sub="${i}" data-paint="${x.paintId}" title="持っていない絵具を代替に置換">持っていない</button></li>`).join('')}
+              ${subbing ? `<button class="btn btn-ghost btn-s sub-btn" data-sub="${i}" data-paint="${x.paintId}" title="この絵具を、所持している別の絵具に置き換えて計算し直します">置き換える</button>` : ''}</li>`).join('')}
           </ul>
-          <button class="btn btn-ghost btn-s" data-use="${i}">この候補で調整する ↓</button>
+          <div class="row gap-s wrap">
+            <button class="btn btn-ghost btn-s" data-use="${i}">この候補で調整する ↓</button>
+            <button class="link" data-subbing="${i}">${subbing ? '置き換えをやめる' : '持っていない絵具がある'}</button>
+          </div>
         </div>
-      </div>`).join('') + (S.candTime == null
-        ? '<div class="hint small">呼び出したカラーに保存されていた候補です</div>'
-        : `<div class="hint small">所持している ${mixableOwnedCount()} 色から計算しました（${S.candTime.toFixed(0)} ms）</div>`);
+      </div>`;
+    }).join('') + (S.candTime == null
+      ? '<div class="hint small">呼び出したカラーに保存されていた候補です</div>'
+      : `<div class="hint small">所持している ${mixableOwnedCount()} 色から計算しました</div>`);
   }
 
   $('#candidates').addEventListener('click', (e) => {
@@ -542,6 +584,13 @@
       $('#mix-rows').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
+    const subbing = e.target.closest('[data-subbing]');
+    if (subbing) {
+      const i = +subbing.dataset.subbing;
+      S.subbing = S.subbing === i ? null : i;
+      renderCandidates();
+      return;
+    }
     const sub = e.target.closest('[data-sub]');
     if (sub) {
       const i = +sub.dataset.sub, pid = sub.dataset.paint;
@@ -550,6 +599,7 @@
       if (!res) return toast('代替できる絵具がありません（所持の設定は変えていません）');
       warnIfFailed(Store.setOwned(pid, false));
       S.candidates[i] = res;
+      S.subbing = null;
       stopReverse();
       S.candKey = candKeyNow(); // 未所持にした分で計算し直さず、置き換えた候補を残す
       renderCandidates();
@@ -590,11 +640,11 @@
     const ev = PaintDB.evaluate(S.mix, target);
     $('#mix-preview').innerHTML = ev
       ? `<div class="cand-sw tall">
-          <div style="background:${target ? Color.toHex(target) : 'transparent'}"><span>${target ? '目標' : '目標なし'}</span></div>
-          <div style="background:${ev.hex}"><span>予測</span></div>
+          <div class="${target ? onLight(Color.toHex(target)) : 'on-light'}" style="background:${target ? Color.toHex(target) : 'transparent'}"><span>${target ? '目標' : '目標なし'}</span></div>
+          <div class="${onLight(ev.hex)}" style="background:${ev.hex}"><span>予測</span></div>
         </div>
         <div class="kv"><span>予測色</span><b class="mono">${ev.hex}</b>
-          <span>絵具の合計</span><b class="mono ${total === 100 ? '' : 'warn-t'}">${total}%${total === 100 ? '' : '（保存するときに100%にそろえます）'}</b></div>
+          <span>絵具の合計</span><b><span class="mono">${total}%</span>${total === 100 ? '' : '<span class="note">（保存するときに、比率を変えずに100%にそろえます）</span>'}</b></div>
         ${ev.de != null ? deBadge(ev.de) : ''}`
       : '<div class="empty small">混色の予測がここに出ます</div>';
   }
@@ -643,10 +693,11 @@
   $('#btn-save').addEventListener('click', async () => {
     // 合計が100%でないとき（グラムで入れたときなど）や0%の絵具があるときは、保存の前にそろえて画面にも反映する
     const total = S.mix.reduce((s, m) => s + (+m.pct || 0), 0);
+    let normalized = '';
     if (S.mix.length && (total !== 100 || S.mix.some((m) => !(m.pct > 0)))) {
       S.mix = normalizeMix(S.mix);
       renderMix();
-      if (total !== 100 && S.mix.length) toast(`絵具の合計が${total}%だったので、比率を変えずに100%にそろえました`);
+      if (total !== 100 && S.mix.length) normalized = `絵具の合計が${total}%だったので、比率を変えずに100%にそろえました`;
     }
     const rgb = representative() || PaintDB.evaluate(S.mix)?.rgb;
     if (!rgb) return toast('代表色か実際の調色を決めてから保存してください');
@@ -684,6 +735,7 @@
       actual: S.mix.map((x) => ({ ...x })),
     };
     openEditor(draft, { fromMix: true, baseId: base?.id });
+    if (normalized) toast(normalized); // 保存の画面を開いてから知らせる（画面の手前に出る）
   });
 
   // ================= エントリ編集ダイアログ =================
@@ -701,7 +753,7 @@
     $('#image-view').src = Store.fullUrl(id);
     $('#image-view').alt = name || '';
     $('#image-name').textContent = name || '';
-    viewer.showModal();
+    openModal(viewer);
   }
   $('#image-close').addEventListener('click', () => viewer.close());
   viewer.addEventListener('click', (e) => { if (e.target === viewer) viewer.close(); });
@@ -738,12 +790,11 @@
           <label class="span2">コメント<textarea name="comment" rows="2" placeholder="例：少し暖色寄り。頬の中心だけ3回重ねる">${esc(e.comment)}</textarea></label>
         </div>
 
-        <h3>制作条件</h3>
+        <h3>制作条件 <span class="badge" title="使用絵具はリキテックスに固定です。ライン（レギュラー・ソフト・ベーシックス）は調色記録の絵具に表示されます">使用絵具：${esc(Store.DEFAULT_BRAND)}</span></h3>
         <div class="form-grid">
           <label>ヘッド<input name="head" value="${esc(e.cond?.head)}" placeholder="DDH-27" list="heads"></label>
           <label>肌色<select name="skin">${Store.SKINS.map((s) => `<option ${s === e.cond?.skin ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
           <label>トップコート<select name="topcoat">${Store.TOPCOATS.map((s) => `<option ${s === e.cond?.topcoat ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
-          <label>使用絵具<input value="${esc(Store.DEFAULT_BRAND)}" readonly tabindex="-1" class="readonly" title="使用絵具はリキテックスに固定です。ライン（レギュラー・ソフト・ベーシックス）は調色記録の絵具に表示されます"></label>
           <label>使用メディウム<select name="medium">${PaintDB.mediums.map((m) => `<option value="${m.id}" ${m.id === (e.cond?.medium || 'none') ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
         </div>
         <datalist id="heads">${['DDH-01', 'DDH-06', 'DDH-09', 'DDH-10', 'DDH-27', 'DDH-28', 'DDH-29'].map((h) => `<option value="${h}">`).join('')}</datalist>
@@ -875,7 +926,7 @@
       if (opt.fromMix) S.recalled = data.id;
     };
 
-    dlg.showModal();
+    openModal(dlg);
   }
 
   // ================= レシピ帳 =================
@@ -935,6 +986,7 @@
       candidates: (e.estimated || []).map((c) => ({ ...c, ...PaintDB.evaluate(c.items, Color.parseHex(e.hex)) })),
       mix: (e.actual || []).map((x) => ({ ...x })),
       candTime: null,
+      subbing: null,
       recalled: e.id,
     });
     stopReverse(); // 計算中の候補で、呼び出した候補を上書きしない
@@ -1073,10 +1125,13 @@
     const line = PaintDB.lineById[PF.line];
     const lp = PaintDB.paints.filter((p) => p.line === line.id);
     const special = lp.filter((p) => !p.mixable).length;
-    $('#paint-q').placeholder = lp.some((p) => p.no) ? '品番・色名で検索（例：008、ナフソール）' : '色名で検索（例：ナフソール）';
+    $('#paint-q').placeholder = lp.some((p) => p.no) ? '品番・色名で検索' : '色名で検索';
+    // 所持していない絵具を薄くするのは、このラインに所持している絵具があるときだけ（1色もなければ全部が薄くなって見づらいため）
+    $('table.paints').classList.toggle('fade-unowned', lp.some((p) => Store.isOwned(p.id)));
     $('#paint-source').textContent = `出典：${line.chart}の${lp.some((p) => p.no) ? '品番・' : ''}色名・透明度。${line.name}は${lp.length}色で、うちメタリック・蛍光・イリディッセントの${special}色は計算対象外です。色見本はチャートから取った色で、実際の絵具の色とは異なります。混色はこの色から Mixbox で計算します。`;
     const W = PaintDB.byId[PaintDB.whiteOf[PF.line]?.id || PaintDB.WHITE_ID]; // 同じラインのチタニウムホワイトと混ぜる
     const list = shownPaints();
+    $('#btn-unown-shown').disabled = !list.some((p) => Store.isOwned(p.id)); // 解除する絵具がないときは押せない
     $('#paint-rows').innerHTML = list.length ? list.map((p) => {
       const owned = Store.isOwned(p.id);
       const ladder = !p.mixable ? [] : p === W ? [[1, 0]] : [[1, 0], [1, 1], [1, 4], [1, 10]];
@@ -1086,7 +1141,7 @@
           <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div></td>
         <td>${p.mixable ? `<div class="ladder">${ladder.map(([a, w]) => {
           const hex = w ? Color.toHex(PaintDB.mixRgb([p, W], [a, w])) : p.hex;
-          return `<span style="background:${hex}" title="${w ? `1:${w}` : '絵具のみ'} ${hex}"><small>${w ? `1:${w}` : '原色'}</small></span>`;
+          return `<span class="${onLight(hex)}" style="background:${hex}" title="${w ? `1:${w}` : '絵具のみ'} ${hex}"><small>${w ? `1:${w}` : '原色'}</small></span>`;
         }).join('')}</div>` : '<span class="hint">—</span>'}</td></tr>`;
     }).join('') : '<tr><td colspan="3" class="empty small">該当する絵具はありません</td></tr>';
   }
@@ -1101,7 +1156,8 @@
   $('#paint-owned-only').addEventListener('change', (e) => { PF.ownedOnly = e.target.checked; renderPaints(); });
   $('#paint-q').addEventListener('input', (e) => { PF.q = e.target.value; renderPaints(); });
   $('#btn-unown-shown').addEventListener('click', () => {
-    const ids = shownPaints().map((p) => p.id);
+    const ids = shownPaints().map((p) => p.id).filter(Store.isOwned);
+    if (!ids.length) return;
     if (ids.length > 10 && !confirm(`表示中の${ids.length}色の所持を解除します。よろしいですか？`)) return;
     warnIfFailed(Store.setOwnedMany(ids, false));
     renderPaints();
@@ -1216,9 +1272,8 @@
 
   // ================= このアプリについて =================
   const aboutDlg = $('#about-dialog');
-  const openAbout = () => { if (!aboutDlg.open) aboutDlg.showModal(); };
+  const openAbout = () => { if (!aboutDlg.open) openModal(aboutDlg); };
   $('#btn-about').addEventListener('click', openAbout);
-  $$('[data-open-about]').forEach((b) => b.addEventListener('click', openAbout));
   aboutDlg.addEventListener('click', (e) => { if (e.target === aboutDlg) aboutDlg.close(); }); // 背景クリックで閉じる
 
   // ---------------- 起動 ----------------
