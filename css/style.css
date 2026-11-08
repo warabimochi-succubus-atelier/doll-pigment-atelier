@@ -344,6 +344,7 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
 .ladder { display: flex; gap: 3px; }
 .ladder span { width: 52px; height: 30px; border-radius: 6px; position: relative; border: 1px solid rgba(0,0,0,.08); }
 .ladder small { position: absolute; left: 4px; bottom: 0; font-size: 9px; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,.7); }
+.ladder-in { display: none; } /* スマホで絵具名の下に出す混色見本（PC では3列目に出す） */
 .plain { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 12px; } /* 設定画面のほかの説明文（.hint）と同じ大きさ */
 
 /* ---- dialog ---- */
@@ -426,9 +427,10 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
   .cand-sw { width: 40px; }
   .filters > * { flex: 1 1 40%; }
   .filters > .grow { flex-basis: 100%; }
-  .ladder span { width: 30px; height: 26px; }
-  .ladder small { display: none; }
-  .pcell { min-width: 7em; }
+  /* 混色見本は3列目ではなく絵具名の下に出し、絵具名の欄を広く取る（名前が改行されないように） */
+  .paints th:nth-child(3), .paints td.ladder-col { display: none; }
+  .ladder-in { display: flex; margin: 6px 0 2px 26px; }
+  .ladder-in span { flex: 1 1 0; max-width: 52px; height: 26px; }
   .paints td, .paints th { padding: 6px 4px; }
 }
 

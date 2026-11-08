@@ -1122,15 +1122,19 @@
     $('#btn-unown-shown').disabled = !list.some((p) => Store.isOwned(p.id)); // 解除する絵具がないときは押せない
     $('#paint-rows').innerHTML = list.length ? list.map((p) => {
       const owned = Store.isOwned(p.id);
-      const ladder = !p.mixable ? [] : p === W ? [[1, 0]] : [[1, 0], [1, 1], [1, 4], [1, 10]];
+      const steps = !p.mixable ? [] : p === W ? [[1, 0]] : [[1, 0], [1, 1], [1, 4], [1, 10]];
+      const ladder = steps.map(([a, w]) => {
+        const hex = w ? Color.toHex(PaintDB.mixRgb([p, W], [a, w])) : p.hex;
+        return `<span class="${onLight(hex)}" style="background:${hex}" title="${w ? `1:${w}` : '絵具のみ'} ${hex}"><small>${w ? `1:${w}` : '原色'}</small></span>`;
+      }).join('');
+      // 白との混色見本は、PC では3列目に、スマホでは絵具名の下（ladder-in）に出す。
+      // スマホで3列目に置くと、絵具名の欄が狭くなって名前が改行されるため
       return `<tr class="${owned ? '' : 'unowned'}">
         <td><input type="checkbox" data-own="${p.id}" ${owned ? 'checked' : ''} aria-label="${esc(p.name)}を所持"></td>
         <td><div class="pcell">${sw(p.hex)}<span>${p.no ? `<span class="pno mono">${p.no}</span>` : ''}${esc(p.name)}</span></div>
-          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div></td>
-        <td>${p.mixable ? `<div class="ladder">${ladder.map(([a, w]) => {
-          const hex = w ? Color.toHex(PaintDB.mixRgb([p, W], [a, w])) : p.hex;
-          return `<span class="${onLight(hex)}" style="background:${hex}" title="${w ? `1:${w}` : '絵具のみ'} ${hex}"><small>${w ? `1:${w}` : '原色'}</small></span>`;
-        }).join('')}</div>` : '<span class="hint">—</span>'}</td></tr>`;
+          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div>
+          ${p.mixable ? `<div class="ladder ladder-in" aria-hidden="true">${ladder}</div>` : ''}</td>
+        <td class="ladder-col">${p.mixable ? `<div class="ladder">${ladder}</div>` : '<span class="hint">—</span>'}</td></tr>`;
     }).join('') : '<tr><td colspan="3" class="empty small">該当する絵具はありません</td></tr>';
   }
   $('#paint-rows').addEventListener('change', (e) => {
