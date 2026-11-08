@@ -344,7 +344,7 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
 .ladder { display: flex; gap: 3px; }
 .ladder span { width: 52px; height: 30px; border-radius: 6px; position: relative; border: 1px solid rgba(0,0,0,.08); }
 .ladder small { position: absolute; left: 4px; bottom: 0; font-size: 9px; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,.7); }
-.plain { margin: 0; padding-left: 18px; color: var(--ink-2); }
+.plain { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 12px; } /* 設定画面のほかの説明文（.hint）と同じ大きさ */
 
 /* ---- dialog ---- */
 .dialog {
