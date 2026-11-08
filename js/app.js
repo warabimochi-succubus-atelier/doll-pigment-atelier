@@ -516,7 +516,7 @@
       renderCandidates();
       return;
     }
-    $('#candidates').innerHTML = '<div class="empty">計算中…</div>';
+    $('#candidates').innerHTML = '<div class="empty small">計算中…</div>';
     reverseTimer = setTimeout(async () => {
       const rgb = representative();
       if (!rgb) return;
@@ -543,7 +543,7 @@
     const rgb = representative();
     if (!S.candidates.length) {
       $('#candidates').innerHTML = mixableOwnedCount()
-        ? '<div class="empty">代表色が決まると、自動で調色候補を計算します</div>'
+        ? '<div class="empty small">代表色が決まると、自動で調色候補を計算します</div>'
         : '<div class="empty">調色候補は、持っている絵具だけで計算します。<br>先に絵具箱で、持っている絵具を選んでください。<div class="sample-try"><a class="btn btn-ghost btn-s" href="#paints">絵具箱を開く</a></div></div>';
       return;
     }
