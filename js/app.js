@@ -594,7 +594,7 @@
           <div style="background:${ev.hex}"><span>予測</span></div>
         </div>
         <div class="kv"><span>予測色</span><b class="mono">${ev.hex}</b>
-          <span>絵具の合計</span><b class="mono ${total === 100 ? '' : 'warn-t'}">${total}%${total === 100 ? '' : '（100%にしてください）'}</b></div>
+          <span>絵具の合計</span><b class="mono ${total === 100 ? '' : 'warn-t'}">${total}%${total === 100 ? '' : '（保存するときに100%にそろえます）'}</b></div>
         ${ev.de != null ? deBadge(ev.de) : ''}`
       : '<div class="empty small">混色の予測がここに出ます</div>';
   }
@@ -626,7 +626,28 @@
   });
   $('#btn-clear-mix').addEventListener('click', () => { S.mix = []; renderMix(); });
 
+  // 実際の調色を、比率を変えずに合計100%（整数）にそろえる。0%の絵具は外す
+  // （端数は、切り捨てで減った分の大きい絵具から1%ずつ足す）
+  function normalizeMix(items) {
+    const valid = items.filter((x) => x.pct > 0);
+    const total = valid.reduce((s, x) => s + x.pct, 0);
+    if (!total) return [];
+    const raw = valid.map((x) => (x.pct * 100) / total);
+    const out = valid.map((x, i) => ({ ...x, pct: Math.floor(raw[i]) }));
+    let rest = 100 - out.reduce((s, x) => s + x.pct, 0);
+    raw.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0])
+      .forEach(([, i]) => { if (rest > 0) { out[i].pct++; rest--; } });
+    return out;
+  }
+
   $('#btn-save').addEventListener('click', async () => {
+    // 合計が100%でないとき（グラムで入れたときなど）や0%の絵具があるときは、保存の前にそろえて画面にも反映する
+    const total = S.mix.reduce((s, m) => s + (+m.pct || 0), 0);
+    if (S.mix.length && (total !== 100 || S.mix.some((m) => !(m.pct > 0)))) {
+      S.mix = normalizeMix(S.mix);
+      renderMix();
+      if (total !== 100 && S.mix.length) toast(`絵具の合計が${total}%だったので、比率を変えずに100%にそろえました`);
+    }
     const rgb = representative() || PaintDB.evaluate(S.mix)?.rgb;
     if (!rgb) return toast('代表色か実際の調色を決めてから保存してください');
     const base = S.recalled ? Store.get(S.recalled) : null;
