@@ -723,7 +723,7 @@
     }
     const draft = {
       ...(base ? structuredClone(base) : {
-        name: '', part: '頬', customPart: '', rating: 3, comment: '',
+        name: '', rating: 3, comment: '',
         cond: { head: '', skin: 'セミホワイト', topcoat: 'つや消し', brand: Store.DEFAULT_BRAND, medium: Store.lastMedium() }, recordImages: [],
       }),
       hex: Color.toHex(rgb),
@@ -778,13 +778,7 @@
       </div>
       <div class="dlg-body">
         <div class="form-grid">
-          <label>部位
-            <select name="part">${Store.PARTS.map((p) => `<option ${p === e.part ? 'selected' : ''}>${p}</option>`).join('')}</select>
-          </label>
-          <label class="custom-part" ${e.part === 'カスタム' ? '' : 'hidden'}>カスタム部位名
-            <input name="customPart" value="${esc(e.customPart)}" placeholder="例：涙袋">
-          </label>
-          <label>評価
+          <label class="span2">評価
             <div class="stars-input" data-v="${e.rating}">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-v="${n}" class="${n <= e.rating ? 'on' : ''}">★</button>`).join('')}</div>
           </label>
           <label class="span2">コメント<textarea name="comment" rows="2" placeholder="例：少し暖色寄り。頬の中心だけ3回重ねる">${esc(e.comment)}</textarea></label>
@@ -868,9 +862,6 @@
         recall(e.id);
       }
     };
-    form.querySelector('[name=part]').onchange = (ev) => {
-      form.querySelector('.custom-part').hidden = ev.target.value !== 'カスタム';
-    };
     form.querySelector('[data-rec]').onchange = async (ev) => {
       work.recordImages = work.recordImages || [];
       const files = [...ev.target.files];
@@ -891,8 +882,6 @@
       return {
         ...work,
         name: fd.get('name').trim(),
-        part: fd.get('part'),
-        customPart: fd.get('customPart') || '',
         comment: fd.get('comment'),
         cond: { head: fd.get('head').trim(), skin: fd.get('skin'), topcoat: fd.get('topcoat'), brand: Store.DEFAULT_BRAND, medium: fd.get('medium') },
       };
@@ -930,11 +919,9 @@
   }
 
   // ================= レシピ帳 =================
-  $('#lib-part').innerHTML += Store.PARTS.map((p) => `<option>${p}</option>`).join('');
-  ['#lib-q', '#lib-part', '#lib-rating', '#lib-sort'].forEach((s) => $(s).addEventListener('input', renderLibrary));
+  ['#lib-q', '#lib-rating', '#lib-sort'].forEach((s) => $(s).addEventListener('input', renderLibrary));
 
   function entryCard(e, extra = '') {
-    const part = e.part === 'カスタム' && e.customPart ? e.customPart : e.part;
     return `<button class="entry" data-id="${e.id}">
       <div class="entry-sw" style="background:${e.hex}">
         ${e.recordImages?.[0] && Store.hasImage(e.recordImages[0].imageId) ? `<img src="${Store.thumbUrl(e.recordImages[0].imageId)}" alt="">` : ''}
@@ -943,22 +930,22 @@
         <div class="entry-name">${esc(e.name)}</div>
         <div class="stars">${stars(e.rating)}</div>
         <div class="entry-comment">${esc(e.comment)}</div>
-        <div class="tags"><span class="tag">${esc(part)}</span>${e.cond?.head ? `<span class="tag">${esc(e.cond.head)}</span>` : ''}<span class="tag mono">${e.hex}</span></div>
+        <div class="tags">${e.cond?.head ? `<span class="tag">${esc(e.cond.head)}</span>` : ''}<span class="tag mono">${e.hex}</span></div>
         ${extra}
       </div></button>`;
   }
 
-  // 検索の対象：名称・コメント・カスタム部位名と、制作条件（ヘッド・肌色・トップコート・使用絵具・使用メディウム）
+  // 検索の対象：名称・コメントと、制作条件（ヘッド・肌色・トップコート・使用絵具・使用メディウム）
   const searchText = (e) => [
-    e.name, e.comment, e.customPart,
+    e.name, e.comment,
     e.cond?.head, e.cond?.skin, e.cond?.topcoat, e.cond?.brand, PaintDB.mediumById[e.cond?.medium]?.name,
   ].join(' ').toLowerCase();
 
   function renderLibrary() {
     const q = $('#lib-q').value.trim().toLowerCase();
-    const part = $('#lib-part').value, minR = +$('#lib-rating').value, sort = $('#lib-sort').value;
+    const minR = +$('#lib-rating').value, sort = $('#lib-sort').value;
     let list = Store.entries().filter((e) =>
-      (!part || e.part === part) && e.rating >= minR &&
+      e.rating >= minR &&
       (!q || searchText(e).includes(q)));
     list = list.sort(sort === 'rating' ? (a, b) => b.rating - a.rating || b.createdAt - a.createdAt
       : sort === 'name' ? (a, b) => a.name.localeCompare(b.name, 'ja') : (a, b) => b.createdAt - a.createdAt);
@@ -1081,13 +1068,12 @@
     }
     const shown = S.similarAll ? res : res.slice(0, 3);
     box.innerHTML = shown.map(({ e, de }) => {
-      const part = e.part === 'カスタム' && e.customPart ? e.customPart : e.part;
       return `<div class="sim-row">
         <button class="sim-main" data-open="${e.id}" title="詳細を開く">
           <span class="sim-sw" style="background:${e.hex}"></span>
           <span class="sim-body">
             <span class="sim-name">${esc(e.name)}</span>
-            <span class="sim-meta"><span class="stars">${stars(e.rating)}</span><span class="tag">${esc(part)}</span>${e.cond?.head ? `<span class="tag">${esc(e.cond.head)}</span>` : ''}</span>
+            <span class="sim-meta"><span class="stars">${stars(e.rating)}</span>${e.cond?.head ? `<span class="tag">${esc(e.cond.head)}</span>` : ''}</span>
           </span>
         </button>
         ${deBadge(de)}
