@@ -774,7 +774,7 @@
           <input name="name" class="title-input" placeholder="名称（例：DDH-29 チークA）" value="${esc(e.name)}" required>
           <div class="mono small">${e.hex} · RGB ${rgb.join(', ')} · Lab ${Color.fmtLab(Color.rgbToLab(rgb))}</div>
         </div>
-        <button type="button" class="icon-btn" data-act="close" title="閉じる">×</button>
+        <button type="button" class="icon-btn" data-act="close" title="閉じる" ${e.name ? 'autofocus' : ''}>×</button>
       </div>
       <div class="dlg-body">
         <div class="form-grid">
@@ -915,6 +915,9 @@
       if (opt.fromMix) S.recalled = data.id;
     };
 
+    // 名称が入っているとき（レシピ帳の詳細、呼び出したカラーの上書き）は、入力欄ではなく「閉じる」に
+    // フォーカスする（上の autofocus）。iOS では入力欄にフォーカスするとキーボードが開き、毎回閉じる操作が要るため。
+    // 名称が空のとき（新しく保存するとき）は、すぐ入力できるよう最初の欄（名称）にフォーカスする
     openModal(dlg);
   }
 
