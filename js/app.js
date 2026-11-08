@@ -724,7 +724,7 @@
     const draft = {
       ...(base ? structuredClone(base) : {
         name: '', rating: 3, comment: '',
-        cond: { head: '', skin: 'セミホワイト', topcoat: 'つや消し', brand: Store.DEFAULT_BRAND, medium: Store.lastMedium() }, recordImages: [],
+        cond: { head: '', skin: 'セミホワイト', brand: Store.DEFAULT_BRAND, medium: Store.lastMedium() }, recordImages: [],
       }),
       hex: Color.toHex(rgb),
       method: src ? src.method : S.fixed ? 'manual' : 'average',
@@ -786,9 +786,8 @@
 
         <h3>制作条件 <span class="badge" title="使用絵具はリキテックスに固定です。ライン（レギュラー・ソフト・ベーシックス）は調色記録の絵具に表示されます">使用絵具：${esc(Store.DEFAULT_BRAND)}</span></h3>
         <div class="form-grid">
-          <label>ヘッド<input name="head" value="${esc(e.cond?.head)}" placeholder="DDH-27" list="heads"></label>
+          <label>ヘッド<input name="head" value="${esc(e.cond?.head)}" placeholder="DDH-01" list="heads"></label>
           <label>肌色<select name="skin">${Store.SKINS.map((s) => `<option ${s === e.cond?.skin ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
-          <label>トップコート<select name="topcoat">${Store.TOPCOATS.map((s) => `<option ${s === e.cond?.topcoat ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
           <label>使用メディウム<select name="medium">${PaintDB.mediums.map((m) => `<option value="${m.id}" ${m.id === (e.cond?.medium || 'none') ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></label>
         </div>
         <datalist id="heads">${['DDH-01', 'DDH-06', 'DDH-09', 'DDH-10', 'DDH-27', 'DDH-28', 'DDH-29'].map((h) => `<option value="${h}">`).join('')}</datalist>
@@ -883,7 +882,7 @@
         ...work,
         name: fd.get('name').trim(),
         comment: fd.get('comment'),
-        cond: { head: fd.get('head').trim(), skin: fd.get('skin'), topcoat: fd.get('topcoat'), brand: Store.DEFAULT_BRAND, medium: fd.get('medium') },
+        cond: { head: fd.get('head').trim(), skin: fd.get('skin'), brand: Store.DEFAULT_BRAND, medium: fd.get('medium') },
       };
     }
 
@@ -938,10 +937,10 @@
       </div></button>`;
   }
 
-  // 検索の対象：名称・コメントと、制作条件（ヘッド・肌色・トップコート・使用絵具・使用メディウム）
+  // 検索の対象：名称・コメントと、制作条件（ヘッド・肌色・使用絵具・使用メディウム）
   const searchText = (e) => [
     e.name, e.comment,
-    e.cond?.head, e.cond?.skin, e.cond?.topcoat, e.cond?.brand, PaintDB.mediumById[e.cond?.medium]?.name,
+    e.cond?.head, e.cond?.skin, e.cond?.brand, PaintDB.mediumById[e.cond?.medium]?.name,
   ].join(' ').toLowerCase();
 
   function renderLibrary() {

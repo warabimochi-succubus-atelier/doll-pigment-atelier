@@ -15,7 +15,6 @@ const Store = (() => {
   const DB_VERSION = 2; // 2：images を追加
   const LEGACY_KEY = 'dpa.userdb.v3';
   const SKINS = ['セミホワイト', 'フレッシュ', 'ノーマル', 'ホワイト', 'その他'];
-  const TOPCOATS = ['つや消し', '半つや', 'つや有り'];
   const DEFAULT_BRAND = 'リキテックス'; // 制作条件「使用絵具」（固定。ライン〈レギュラー・ソフト・ベーシックス〉は実際の調色の絵具でわかる）
 
   const uid = () => Math.random().toString(36).slice(2, 10);
@@ -26,7 +25,7 @@ const Store = (() => {
       createdAt: Date.now() - daysAgo * 86400000,
       refImages: [], recordImages: [], extracted: [o.hex], method: 'average',
       comment: '',
-      cond: { head: 'DDH-29', skin: 'セミホワイト', topcoat: 'つや消し', brand: DEFAULT_BRAND, medium: 'painting-medium' },
+      cond: { head: 'DDH-29', skin: 'セミホワイト', brand: DEFAULT_BRAND, medium: 'painting-medium' },
       estimated: [],
       ...o,
     });
@@ -40,10 +39,10 @@ const Store = (() => {
     return [
       withMix(mk({ name: 'コーラルピンクチーク', hex: '#E9A3A0', rating: 5, comment: '少し暖色寄り。3回重ねる' }, 2)),
       withMix(mk({ name: '幼い魔性チーク', hex: '#E494A6', rating: 5, comment: '頬の中心だけ重ねる（4回）。青みピンク',
-        cond: { head: 'DDH-27', skin: 'セミホワイト', topcoat: 'つや消し', brand: DEFAULT_BRAND, medium: 'painting-medium' } }, 9)),
+        cond: { head: 'DDH-27', skin: 'セミホワイト', brand: DEFAULT_BRAND, medium: 'painting-medium' } }, 9)),
       withMix(mk({ name: 'くすみローズの唇', hex: '#B9646C', rating: 4, comment: 'グラデの濃い側' }, 20)),
       withMix(mk({ name: 'ブラウン系アイシャドウ', hex: '#B08A72', rating: 3, comment: 'もう少し赤みが欲しい',
-        cond: { head: 'DDH-10', skin: 'フレッシュ', topcoat: 'つや消し', brand: DEFAULT_BRAND, medium: 'painting-medium' } }, 35)),
+        cond: { head: 'DDH-10', skin: 'フレッシュ', brand: DEFAULT_BRAND, medium: 'painting-medium' } }, 35)),
       withMix(mk({ name: 'こげ茶アイライン', hex: '#3E2A24', rating: 4, comment: '細筆で2回' }, 41)),
       withMix(mk({ name: 'ピーチチーク（室内光）', hex: '#EFB49A', rating: 2, comment: '黄みが強すぎた' }, 60)),
     ];
@@ -93,7 +92,7 @@ const Store = (() => {
       cond: {
         head: str(c.head, 100),
         skin: oneOf(c.skin, SKINS, 'その他'),
-        topcoat: oneOf(c.topcoat, TOPCOATS, TOPCOATS[0]),
+        // トップコート（topcoat。以前の版の項目）は取り込まない
         brand: DEFAULT_BRAND,
         medium: PaintDB.mediumById[c.medium] ? c.medium : 'none',
       },
@@ -322,7 +321,7 @@ const Store = (() => {
   }
 
   return {
-    SKINS, TOPCOATS, DEFAULT_BRAND, DB_NAME, uid, init,
+    SKINS, DEFAULT_BRAND, DB_NAME, uid, init,
     // ---- 画像 ----
     // 画像を保存して id を返す（保存できなければ null）。{ full: Blob, thumb: Blob, name, w, h }
     // 保存した画像は、エントリから参照しないと次の起動時に消える
