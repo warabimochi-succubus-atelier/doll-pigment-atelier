@@ -417,3 +417,10 @@ input.readonly:not([type=checkbox]) { background: var(--surface-2); color: var(-
   .pcell { min-width: 7em; }
   .paints td, .paints th { padding: 6px 4px; }
 }
+
+/* iOS Safari は、文字が16px未満の入力欄をタップすると画面を拡大するため、
+   タッチ操作の端末では入力欄の文字を16pxにする（ピンチでの拡大はそのまま使える） */
+@media (pointer: coarse) {
+  input:not([type=checkbox]):not([type=file]):not([type=range]):not(.title-input),
+  select, textarea, .form-grid select, .form-grid textarea { font-size: 16px; }
+}
