@@ -1,5 +1,7 @@
 # Doll Pigment Atelier (ドールメイク用 調色記録・再現ツール)
 
+![調色画面：サンプル画像のチークから色を取り、レシピ帳の近い色と、持っている絵具での調色候補を表示しているところ](images/screenshot-mix.png)
+
 ## Overview (English)
 
 **Open the app: [https://warabimochi-succubus-atelier.github.io/doll-pigment-atelier/](https://warabimochi-succubus-atelier.github.io/doll-pigment-atelier/)**
@@ -109,6 +111,7 @@ js/app.js             画面ロジック
 icons/                アプリアイコン（PWA 用 any / maskable、iOS 用、ファビコン）
 icons/source/         アイコンの元画像
 images/author-logo.webp  作者ロゴ（「このアプリについて」ダイアログ）
+images/screenshot-mix.png  README に載せている調色画面のスクリーンショット
 manifest.webmanifest  PWA マニフェスト
 sw.js                 Service Worker（オフライン用。新しい版が届いたら画面に知らせる）
 .nojekyll             GitHub Pages の Jekyll 変換を止め、ファイルをそのまま配信する（中身は空）
