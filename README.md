@@ -2,6 +2,8 @@
 
 ## Overview (English)
 
+**Open the app: https://warabimochi-succubus-atelier.github.io/doll-pigment-atelier/**
+
 **Doll Pigment Atelier** is a web app (PWA) for doll makeup artists who paint with Liquitex acrylics. It records the colors that worked and helps you mix them again. It runs in the browser on phones and PCs, and you can install it to your home screen.
 
 - **A record, not a simulator**: the core of the app is a recipe book of colors that worked: the mix you actually used, a ★1–5 rating, comments, the head, skin tone, top coat, medium, and photos of the finished face. Saved colors can be searched and recalled with one tap.
@@ -21,6 +23,8 @@ The suggested mixes are only a starting point: the paint colors come from the pr
 ---
 
 ## 概要
+
+**アプリを開く：https://warabimochi-succubus-atelier.github.io/doll-pigment-atelier/**（スマホでは、ブラウザの「ホーム画面に追加」でアプリとして使えます）
 
 ドールメイクで「うまくいった色」を記録し、次のメイクで再現するための Web アプリ（PWA）です。参考画像から目標の色を取り出し、リキテックスのアクリル絵の具での調色割合を提案します。実際に混ぜた結果は、レシピ帳に残せます。スマホと PC のブラウザで動き、データは端末の中だけに保存します。詳しい仕様は [SPECIFICATION.md](SPECIFICATION.md)、使い方は [USER_MANUAL.md](USER_MANUAL.md) を参照してください。
 
