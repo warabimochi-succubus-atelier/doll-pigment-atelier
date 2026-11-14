@@ -112,10 +112,13 @@ const Store = (() => {
       seen.add(e.id);
       return e;
     });
+    const owned = [...new Set((Array.isArray(d?.owned) ? d.owned : []).filter((id) => PaintDB.byId[id]))];
     return {
       version: 1,
       entries: byNewest(entries),
-      owned: [...new Set((Array.isArray(d?.owned) ? d.owned : []).filter((id) => PaintDB.byId[id]))],
+      owned,
+      // 切らしている絵具（所持の登録は残したまま、調色候補の計算には使わない）。所持している絵具だけ
+      runOut: [...new Set((Array.isArray(d?.runOut) ? d.runOut : []).filter((id) => owned.includes(id)))],
       lastMedium: PaintDB.mediumById[d?.lastMedium] ? d.lastMedium : 'painting-medium',
     };
   }
@@ -125,12 +128,12 @@ const Store = (() => {
     : null);
 
   // 所持している絵具は、最初は何もない状態から選んでもらう
-  function fresh(entries) { return { version: 1, entries, owned: [], lastMedium: 'painting-medium' }; }
+  function fresh(entries) { return { version: 1, entries, owned: [], runOut: [], lastMedium: 'painting-medium' }; }
   const byNewest = (list) => list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
   // ---------------- IndexedDB ----------------
   let idb = null;          // 開いたデータベース（使えないときは null。そのときはメモリだけで動く）
-  let db = fresh([]);      // メモリ上のユーザーDB { version, entries, owned, lastMedium }
+  let db = fresh([]);      // メモリ上のユーザーDB { version, entries, owned, runOut, lastMedium }
   let persistAsked = false;
   let images = new Map();  // 画像 id → { id, name, type, w, h, full, thumb }
   const urls = new Map();  // `${id}:thumb|full` → オブジェクト URL（表示用。画像を消したら解放する）
@@ -177,6 +180,7 @@ const Store = (() => {
       db.entries.forEach((e) => s.entries.put(e));
       images.forEach((im) => s.images.put(im));
       s.meta.put({ key: 'owned', value: db.owned });
+      s.meta.put({ key: 'runOut', value: db.runOut });
       s.meta.put({ key: 'lastMedium', value: db.lastMedium });
       s.meta.put({ key: 'initialized', value: Date.now() });
     });
@@ -187,6 +191,7 @@ const Store = (() => {
       s.entries.clear();
       db.entries.forEach((e) => s.entries.put(e));
       s.meta.put({ key: 'owned', value: db.owned });
+      s.meta.put({ key: 'runOut', value: db.runOut });
       s.meta.put({ key: 'lastMedium', value: db.lastMedium });
     });
   }
@@ -260,7 +265,7 @@ const Store = (() => {
       if (m.initialized) {
         // 保存済みのデータも確かめてから使う（以前の版でインポートしたデータは確かめていないため）。
         // 形が変わったときだけ書き直す（エントリと設定だけ。画像はそのまま）
-        const raw = { entries, owned: m.owned || [], lastMedium: m.lastMedium || 'painting-medium' };
+        const raw = { entries, owned: m.owned || [], runOut: m.runOut || [], lastMedium: m.lastMedium || 'painting-medium' };
         db = cleanDb(raw);
         if (JSON.stringify(db) !== JSON.stringify({ version: 1, ...raw, entries: byNewest([...entries]) })) await writeEntriesAndMeta();
         // 以前の版で保存したサムネイル（data URL）を画像として取り出す
@@ -313,11 +318,20 @@ const Store = (() => {
     return true;
   }
 
+  // 所持を解除した絵具は「切らしている」も外す
   function setOwnedMany(ids, owned) {
     const set = new Set(db.owned);
     ids.forEach((id) => (owned ? set.add(id) : set.delete(id)));
     db.owned = [...set];
-    return putMeta('owned');
+    db.runOut = db.runOut.filter((id) => set.has(id));
+    return write('meta', (s) => { s.meta.put({ key: 'owned', value: db.owned }); s.meta.put({ key: 'runOut', value: db.runOut }); });
+  }
+  // 切らしている（所持している絵具だけ）
+  function setRunOut(id, out) {
+    const set = new Set(db.runOut);
+    if (out && db.owned.includes(id)) set.add(id); else set.delete(id);
+    db.runOut = [...set];
+    return putMeta('runOut');
   }
 
   return {
@@ -365,6 +379,11 @@ const Store = (() => {
     ownedIds: () => [...db.owned],
     setOwned(id, owned) { return setOwnedMany([id], owned); },
     setOwnedMany,
+    isRunOut: (id) => db.runOut.includes(id),
+    runOutIds: () => [...db.runOut],
+    setRunOut,
+    // 調色候補の計算に使える（所持していて、切らしていない）
+    isUsable: (id) => db.owned.includes(id) && !db.runOut.includes(id),
     // 前回保存したカラーの使用メディウム（新しく保存するときの初期値）
     lastMedium: () => db.lastMedium || 'none',
     setLastMedium(id) { db.lastMedium = id; return putMeta('lastMedium'); },
@@ -393,11 +412,11 @@ const Store = (() => {
       if (!ok) db.entries = prev;
       return ok;
     },
-    // レシピ帳のカラーと画像をすべて消す。絵具箱の所持の設定と、前回のメディウムは残す
+    // レシピ帳のカラーと画像をすべて消す。絵具箱の所持・切らしているの設定と、前回のメディウムは残す
     wipe() {
       return replaceWith(() => {
         images = new Map();
-        db = { ...fresh([]), owned: db.owned, lastMedium: db.lastMedium };
+        db = { ...fresh([]), owned: db.owned, runOut: db.runOut, lastMedium: db.lastMedium };
       });
     },
     // このアプリのデータの大きさ（バイト。github.io のドメインは他のアプリと共有するので、ブラウザ全体の使用量ではなく自分の分を数える）

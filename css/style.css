@@ -339,6 +339,10 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tag.op-opaque { background: var(--surface-2); color: var(--ink-2); }
 .tag.tag-stop { background: color-mix(in srgb, #c45a3b 12%, transparent); color: #a8482e; }
 .tag-muted { background: transparent; border: 1px dashed var(--line); color: var(--ink-2); }
+/* 切らしている（所持している絵具の切り替え。押せることがわかるよう枠を付ける） */
+.tag-out { padding: 2px 9px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; font: inherit; font-size: 11px; line-height: inherit; }
+.tag-out.on { border-color: transparent; background: color-mix(in srgb, #c45a3b 14%, transparent); color: #a8482e; font-weight: 600; }
+.paints tr.run-out .pcell .sw { opacity: .45; }
 .paint-filters { display: grid; gap: 10px; }
 label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
 .ladder { display: flex; gap: 3px; }

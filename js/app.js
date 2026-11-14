@@ -8,8 +8,9 @@
   const sw = (hex, cls = '') => `<span class="sw ${cls}" style="background:${hex}"></span>`;
   // 明るい色の上に文字を載せるときは、白ではなく濃い色の文字にする（白との混色見本や、目標・混色の見本）
   const onLight = (hex) => (Color.rgbToLab(Color.parseHex(hex))[0] > 66 ? 'on-light' : '');
-  const mixableOwnedCount = () => PaintDB.paints.filter((p) => p.mixable && Store.isOwned(p.id)).length;
-  const owned = () => PaintDB.paints.map((p) => p.id).filter(Store.isOwned);
+  // 調色候補の計算には、所持していて切らしていない絵具を使う
+  const mixableOwnedCount = () => PaintDB.paints.filter((p) => p.mixable && Store.isUsable(p.id)).length;
+  const owned = () => PaintDB.paints.map((p) => p.id).filter(Store.isUsable);
 
   const isTouch = matchMedia('(pointer: coarse)').matches; // スマホ・タブレット（タッチ操作の端末）
 
@@ -58,7 +59,7 @@
     similarAll: false, // レシピ帳の近い色をすべて表示するか
     candidates: [],
     candKey: null,     // 表示中の調色候補を計算した「代表色＋所持絵具」（変わったら自動で計算し直す）
-    subbing: null,     // 持っていない絵具を置き換えようとしている候補の番号（置き換えのボタンを出す）
+    subbing: null,     // 手元にない絵具を置き換えようとしている候補の番号（置き換えのボタンを出す）
     mix: [],           // [{ paintId, pct }]
     recalled: null,    // 呼び出し元エントリ id
   };
@@ -544,6 +545,8 @@
     if (!S.candidates.length) {
       $('#candidates').innerHTML = mixableOwnedCount()
         ? '<div class="empty small">代表色が決まると、自動で調色候補を計算します</div>'
+        : Store.runOutIds().length
+        ? '<div class="empty">使える絵具がありません（所持している絵具は、すべて「切らしている」になっています）。<br>買い直した絵具は、絵具箱で「切らしている」を外してください。<div class="sample-try"><a class="btn btn-ghost btn-s" href="#paints">絵具箱を開く</a></div></div>'
         : '<div class="empty">調色候補は、持っている絵具だけで計算します。<br>先に絵具箱で、持っている絵具を選んでください。<div class="sample-try"><a class="btn btn-ghost btn-s" href="#paints">絵具箱を開く</a></div></div>';
       return;
     }
@@ -559,7 +562,7 @@
         <div class="cand-body">
           <div class="row between"><b>候補 ${i + 1}</b>${deBadge(c.de)}</div>
           ${c.substituted ? `<div class="note">${esc(paintName(c.substituted.from))} → ${esc(paintName(c.substituted.to))} に置換して再計算</div>` : ''}
-          ${subbing ? '<div class="note">持っていない絵具の「置き換える」を押してください。所持している絵具から代わりを探して計算し直します</div>' : ''}
+          ${subbing ? '<div class="note">手元にない絵具の「置き換える」を押してください。所持している絵具から色の近いものを探して計算し直します。押した絵具は絵具箱で「切らしている」にして、買い直すまで計算に使いません</div>' : ''}
           <ul class="recipe">
             ${c.items.map((x) => `<li>${sw(PaintDB.byId[x.paintId].hex)}<span class="pname">${esc(paintName(x.paintId))}</span>
               <span class="bar"><i style="width:${x.pct}%"></i></span><b class="mono">${x.pct}%</b>
@@ -573,7 +576,7 @@
       </div>`;
     }).join('') + (S.candTime == null
       ? '<div class="hint small">呼び出したカラーに保存されていた候補です</div>'
-      : `<div class="hint small">所持している ${mixableOwnedCount()} 色から計算しました</div>`);
+      : `<div class="hint small">所持している ${mixableOwnedCount()} 色から計算しました${Store.runOutIds().length ? `（切らしている ${Store.runOutIds().length} 色を除く）` : ''}</div>`);
   }
 
   $('#candidates').addEventListener('click', (e) => {
@@ -594,28 +597,28 @@
     const sub = e.target.closest('[data-sub]');
     if (sub) {
       const i = +sub.dataset.sub, pid = sub.dataset.paint;
-      // 代わりの絵具が見つかったときだけ未所持にする（見つからなければ所持の設定は変えない）
+      // 代わりの絵具が見つかったときだけ「切らしている」にする（見つからなければ絵具箱の設定は変えない）
       const res = PaintDB.substitute(S.candidates[i], pid, representative(), owned());
-      if (!res) return toast('代替できる絵具がありません（所持の設定は変えていません）');
-      warnIfFailed(Store.setOwned(pid, false));
+      if (!res) return toast('代替できる絵具がありません（絵具箱の設定は変えていません）');
+      warnIfFailed(Store.setRunOut(pid, true));
       S.candidates[i] = res;
       S.subbing = null;
       stopReverse();
-      S.candKey = candKeyNow(); // 未所持にした分で計算し直さず、置き換えた候補を残す
+      S.candKey = candKeyNow(); // 切らしている分で計算し直さず、置き換えた候補を残す
       renderCandidates();
-      toast(`${paintName(pid)} を「未所持」にしました（絵具箱で戻せます）`);
+      toast(`${paintName(pid)} を「切らしている」にしました（買い直したら絵具箱で外せます）`);
     }
   });
 
   // ---- 手動調整 ----
-  // 所持している絵具を先に並べ、残りはラインごとにまとめる
+  // 所持している絵具（切らしているものを除く）を先に並べ、残りはラインごとにまとめる
   const paintOptions = (sel) => {
     const opt = (p, text) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(text)}</option>`;
-    const own = PaintDB.paints.filter((p) => Store.isOwned(p.id));
+    const own = PaintDB.paints.filter((p) => Store.isUsable(p.id));
     return (own.length ? `<optgroup label="所持している絵具">${own.map((p) => opt(p, p.fullLabel)).join('')}</optgroup>` : '')
       + PaintDB.lines.map((l) => {
-        const rest = PaintDB.paints.filter((p) => p.line === l.id && !Store.isOwned(p.id));
-        return rest.length ? `<optgroup label="${esc(l.name)}${own.length ? '（未所持）' : ''}">${rest.map((p) => opt(p, p.label)).join('')}</optgroup>` : '';
+        const rest = PaintDB.paints.filter((p) => p.line === l.id && !Store.isUsable(p.id));
+        return rest.length ? `<optgroup label="${esc(l.name)}${own.length ? (Store.runOutIds().length ? '（未所持・切らしている）' : '（未所持）') : ''}">${rest.map((p) => opt(p, p.label)).join('')}</optgroup>` : '';
       }).join('');
   };
 
@@ -670,7 +673,7 @@
   });
   $('#btn-add-row').addEventListener('click', () => {
     if (S.mix.length >= 6) return toast('絵具は6色までにしましょう');
-    const first = PaintDB.WHITE_IDS.find(Store.isOwned) || Store.ownedIds()[0] || PaintDB.WHITE_ID;
+    const first = PaintDB.WHITE_IDS.find(Store.isUsable) || owned()[0] || PaintDB.WHITE_ID;
     S.mix.push({ paintId: first, pct: S.mix.length ? 5 : 100 });
     renderMix();
   });
@@ -1108,7 +1111,8 @@
   }
   function renderPaints() {
     const ownedIn = (id) => PaintDB.paints.filter((p) => p.line === id && Store.isOwned(p.id)).length;
-    $('#owned-count').textContent = `所持 ${Store.ownedIds().length} 色`;
+    const outN = Store.runOutIds().length;
+    $('#owned-count').textContent = `所持 ${Store.ownedIds().length} 色${outN ? `（切らしている ${outN} 色）` : ''}`;
     $('#paint-lines').innerHTML = PaintDB.lines.map((l) => `<button type="button" data-line="${l.id}" class="${l.id === PF.line ? 'on' : ''}" aria-pressed="${l.id === PF.line}">${esc(l.name)}<small>${ownedIn(l.id) ? `${ownedIn(l.id)} / ` : ''}${PaintDB.paints.filter((p) => p.line === l.id).length}</small></button>`).join('');
     const line = PaintDB.lineById[PF.line];
     const lp = PaintDB.paints.filter((p) => p.line === line.id);
@@ -1122,6 +1126,7 @@
     $('#btn-unown-shown').disabled = !list.some((p) => Store.isOwned(p.id)); // 解除する絵具がないときは押せない
     $('#paint-rows').innerHTML = list.length ? list.map((p) => {
       const owned = Store.isOwned(p.id);
+      const out = owned && Store.isRunOut(p.id);
       const steps = !p.mixable ? [] : p === W ? [[1, 0]] : [[1, 0], [1, 1], [1, 4], [1, 10]];
       const ladder = steps.map(([a, w]) => {
         const hex = w ? Color.toHex(PaintDB.mixRgb([p, W], [a, w])) : p.hex;
@@ -1129,10 +1134,12 @@
       }).join('');
       // 白との混色見本は、PC では3列目に、スマホでは絵具名の下（ladder-in）に出す。
       // スマホで3列目に置くと、絵具名の欄が狭くなって名前が改行されるため
-      return `<tr class="${owned ? '' : 'unowned'}">
+      // 所持している絵具には「切らしている」の切り替えを出す（押すと、買い直すまで調色候補の計算に使わない）
+      const outBtn = owned ? `<button type="button" class="tag tag-out${out ? ' on' : ''}" data-out="${p.id}" aria-pressed="${out}" title="${out ? '買い直したら押して外します' : '使い切った絵具は、押すと買い直すまで調色候補の計算に使いません'}">${out ? '切らしている' : '切らした'}</button>` : '';
+      return `<tr class="${owned ? '' : 'unowned'}${out ? ' run-out' : ''}">
         <td><input type="checkbox" data-own="${p.id}" ${owned ? 'checked' : ''} aria-label="${esc(p.name)}を所持"></td>
         <td><div class="pcell">${sw(p.hex)}<span>${p.no ? `<span class="pno mono">${p.no}</span>` : ''}${esc(p.name)}</span></div>
-          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}</div>
+          <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}${outBtn}</div>
           ${p.mixable ? `<div class="ladder ladder-in" aria-hidden="true">${ladder}</div>` : ''}</td>
         <td class="ladder-col">${p.mixable ? `<div class="ladder">${ladder}</div>` : '<span class="hint">—</span>'}</td></tr>`;
     }).join('') : '<tr><td colspan="3" class="empty small">該当する絵具はありません</td></tr>';
@@ -1140,6 +1147,10 @@
   $('#paint-rows').addEventListener('change', (e) => {
     const id = e.target.dataset.own;
     if (id) { warnIfFailed(Store.setOwned(id, e.target.checked)); renderPaints(); }
+  });
+  $('#paint-rows').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-out]');
+    if (b) { warnIfFailed(Store.setRunOut(b.dataset.out, !Store.isRunOut(b.dataset.out))); renderPaints(); }
   });
   $('#paint-lines').addEventListener('click', (e) => {
     const b = e.target.closest('[data-line]');
@@ -1190,8 +1201,8 @@
         if (thumbFile !== file) files.push({ name: thumbFile, data: im.thumb });
         return { id: im.id, name: im.name, type: im.type, w: im.w, h: im.h, file, thumbFile };
       });
-      const { entries, owned, lastMedium } = Store.db;
-      const data = { app: 'doll-pigment-atelier', format: BACKUP_FORMAT, exportedAt: new Date().toISOString(), entries, owned, lastMedium, images: list };
+      const { entries, owned, runOut, lastMedium } = Store.db;
+      const data = { app: 'doll-pigment-atelier', format: BACKUP_FORMAT, exportedAt: new Date().toISOString(), entries, owned, runOut, lastMedium, images: list };
       files.unshift({ name: 'data.json', data: JSON.stringify(data, null, 2) });
       const zip = await Zip.create(files);
       const a = document.createElement('a');
@@ -1239,7 +1250,7 @@
         : 'バックアップファイルを読み込めませんでした');
     }
     if (!confirm(`カラー ${data.entries.length} 件${images.length ? `と画像 ${images.length} 枚` : ''}をインポートします。現在のデータは置き換わります。`)) return;
-    const ok = await Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], lastMedium: data.lastMedium }, images);
+    const ok = await Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], runOut: data.runOut || [], lastMedium: data.lastMedium }, images);
     toast(ok ? 'インポートしました' : SAVE_FAILED);
     afterDataChange();
   });
