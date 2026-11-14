@@ -97,7 +97,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 80px; }
 .btn:hover { border-color: var(--accent); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 a.btn { color: inherit; text-decoration: none; } /* リンクで作ったボタンも、ほかのボタンと同じ見た目にする */
-.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn-primary, a.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; } /* リンクで作ったときも白い文字にする（a.btn の文字色より優先する） */
 .btn-primary:hover { filter: brightness(1.06); }
 .btn-ghost { background: transparent; }
 .btn-danger { color: var(--bad); border-color: color-mix(in srgb, var(--bad) 40%, transparent); background: transparent; }
