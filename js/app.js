@@ -549,7 +549,7 @@
     }
     const target = rgb ? Color.toHex(rgb) : '#cccccc';
     $('#candidates').innerHTML = S.candidates.map((c, i) => {
-      const subbing = S.subbing === i; // 「持っていない絵具がある」を押して、置き換える絵具を選んでいるところ
+      const subbing = S.subbing === i; // 「手元にない絵具を置き換える」を押して、置き換える絵具を選んでいるところ
       return `
       <div class="cand">
         <div class="cand-sw">
@@ -567,7 +567,7 @@
           </ul>
           <div class="row gap-s wrap">
             <button class="btn btn-ghost btn-s" data-use="${i}">この候補で調整する ↓</button>
-            <button class="link" data-subbing="${i}">${subbing ? '置き換えをやめる' : '持っていない絵具がある'}</button>
+            <button class="link" data-subbing="${i}">${subbing ? '置き換えをやめる' : '手元にない絵具を置き換える'}</button>
           </div>
         </div>
       </div>`;
