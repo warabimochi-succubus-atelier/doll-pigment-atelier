@@ -216,7 +216,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .cand-sw .on-light span, .ladder .on-light small { color: rgba(40, 28, 32, .78); text-shadow: none; }
 /* 調色候補の絵具名は省略せずに折り返す（品番とラインまで読めるように） */
 .cands .pname { white-space: normal; overflow: visible; line-height: 1.35; }
-.sub-btn { padding: 2px 8px; }
+/* 調色候補の絵具名（押すと絵具箱でその絵具を表示する） */
+.plink { border: 0; background: none; padding: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; text-decoration: underline dotted color-mix(in srgb, var(--accent) 60%, transparent); text-underline-offset: 3px; }
+.plink:hover { color: var(--accent); }
 .cand-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .cand-body > .row { width: 100%; }
 .recipe { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; gap: 4px; }
@@ -254,6 +256,9 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .banner[hidden] { display: none; }
 .banner span:nth-child(2) { flex: 1; }
 .card .banner { margin-bottom: 12px; font-size: 13px; }
+#paint-focus { flex-wrap: wrap; }
+#paint-focus small { color: var(--ink-2); }
+.paint-filters[hidden] { display: none; }
 /* 呼び出し後にスクロールしたとき、上部のバーに隠れないようにし、カードを一瞬強調する */
 #mix-card { scroll-margin-top: 72px; }
 .card.flash { animation: card-flash 1.4s ease-out; }
@@ -425,7 +430,6 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
   .toast { top: calc(max(8px, env(safe-area-inset-top)) + 52px); }
   .form-grid, .grid-2.tight { grid-template-columns: 1fr; }
   .recipe li { grid-template-columns: 18px 1fr 40px 40px; }
-  .recipe li .sub-btn { grid-column: 2 / -1; justify-self: start; }
   .cands { grid-template-columns: 1fr; }
   .cand { gap: 10px; padding: 10px; }
   .cand-sw { width: 40px; }

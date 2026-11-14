@@ -59,7 +59,7 @@
     similarAll: false, // レシピ帳の近い色をすべて表示するか
     candidates: [],
     candKey: null,     // 表示中の調色候補を計算した「代表色＋所持絵具」（変わったら自動で計算し直す）
-    subbing: null,     // 手元にない絵具を置き換えようとしている候補の番号（置き換えのボタンを出す）
+    backToCands: false, // 候補の絵具名から絵具箱を開いた（調色に戻ったら候補の位置を表示する）
     mix: [],           // [{ paintId, pct }]
     recalled: null,    // 呼び出し元エントリ id
   };
@@ -70,11 +70,20 @@
     if (!$('#view-' + tab)) tab = 'mix'; // 存在しないタブは調色を表示
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab));
     $$('#tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
-    if (tab === 'mix') { renderCandidates(); renderMix(); scheduleReverse(); } // 絵具箱で所持を変えたときに反映する
+    if (tab !== 'paints') PF.focus = null; // 候補から開いた絵具の絞り込みは、絵具箱を離れたら解除する
+    let back = false;
+    if (tab === 'mix') {
+      // 候補の絵具名から絵具箱を開いて戻ったとき：所持・切らしているを変えていれば知らせ、候補の位置を表示する
+      back = S.backToCands;
+      S.backToCands = false;
+      if (back && S.candKey && candKeyNow() !== S.candKey) toast('絵具箱の変更に合わせて、調色候補を計算し直します');
+      renderCandidates(); renderMix(); scheduleReverse(); // 絵具箱で所持を変えたときに反映する
+    }
     if (tab === 'library') renderLibrary();
     if (tab === 'paints') renderPaints();
     if (tab === 'settings') renderSettings();
-    window.scrollTo(0, 0);
+    if (back) $('#candidates').closest('.card').scrollIntoView({ block: 'start' });
+    else window.scrollTo(0, 0);
   }
   window.addEventListener('hashchange', route);
 
@@ -528,7 +537,6 @@
       if (!res) return;
       S.candidates = res.cands;
       S.candTime = res.ms;
-      S.subbing = null;
       S.candKey = key;
       renderCandidates();
     }, REVERSE_DELAY);
@@ -551,9 +559,7 @@
       return;
     }
     const target = rgb ? Color.toHex(rgb) : '#cccccc';
-    $('#candidates').innerHTML = S.candidates.map((c, i) => {
-      const subbing = S.subbing === i; // 「手元にない絵具を置き換える」を押して、置き換える絵具を選んでいるところ
-      return `
+    $('#candidates').innerHTML = S.candidates.map((c, i) => `
       <div class="cand">
         <div class="cand-sw">
           <div class="${onLight(target)}" style="background:${target}"><span>目標</span></div>
@@ -561,22 +567,18 @@
         </div>
         <div class="cand-body">
           <div class="row between"><b>候補 ${i + 1}</b>${deBadge(c.de)}</div>
-          ${c.substituted ? `<div class="note">${esc(paintName(c.substituted.from))} → ${esc(paintName(c.substituted.to))} に置換して再計算</div>` : ''}
-          ${subbing ? '<div class="note">手元にない絵具の「置き換える」を押してください。所持している絵具から色の近いものを探して計算し直します。押した絵具は絵具箱で「切らしている」にして、買い直すまで計算に使いません</div>' : ''}
           <ul class="recipe">
-            ${c.items.map((x) => `<li>${sw(PaintDB.byId[x.paintId].hex)}<span class="pname">${esc(paintName(x.paintId))}</span>
-              <span class="bar"><i style="width:${x.pct}%"></i></span><b class="mono">${x.pct}%</b>
-              ${subbing ? `<button class="btn btn-ghost btn-s sub-btn" data-sub="${i}" data-paint="${x.paintId}" title="この絵具を、所持している別の絵具に置き換えて計算し直します">置き換える</button>` : ''}</li>`).join('')}
+            ${c.items.map((x) => `<li>${sw(PaintDB.byId[x.paintId].hex)}<button type="button" class="pname plink" data-focus="${x.paintId}" title="絵具箱でこの絵具を表示します">${esc(paintName(x.paintId))}</button>
+              <span class="bar"><i style="width:${x.pct}%"></i></span><b class="mono">${x.pct}%</b></li>`).join('')}
           </ul>
           <div class="row gap-s wrap">
             <button class="btn btn-ghost btn-s" data-use="${i}">この候補で調整する ↓</button>
-            <button class="link" data-subbing="${i}">${subbing ? '置き換えをやめる' : '手元にない絵具を置き換える'}</button>
           </div>
         </div>
-      </div>`;
-    }).join('') + (S.candTime == null
+      </div>`).join('') + (S.candTime == null
       ? '<div class="hint small">呼び出したカラーに保存されていた候補です</div>'
-      : `<div class="hint small">所持している ${mixableOwnedCount()} 色から計算しました${Store.runOutIds().length ? `（切らしている ${Store.runOutIds().length} 色を除く）` : ''}</div>`);
+      : `<div class="hint small">所持している ${mixableOwnedCount()} 色から計算しました${Store.runOutIds().length ? `（切らしている ${Store.runOutIds().length} 色を除く）` : ''}</div>`)
+      + '<div class="hint small">絵具名を押すと、絵具箱でその絵具を表示します。手元にない絵具は「切らした」を押して戻ると、その絵具を除いて計算し直します</div>';
   }
 
   $('#candidates').addEventListener('click', (e) => {
@@ -587,26 +589,15 @@
       $('#mix-rows').scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
-    const subbing = e.target.closest('[data-subbing]');
-    if (subbing) {
-      const i = +subbing.dataset.subbing;
-      S.subbing = S.subbing === i ? null : i;
-      renderCandidates();
-      return;
-    }
-    const sub = e.target.closest('[data-sub]');
-    if (sub) {
-      const i = +sub.dataset.sub, pid = sub.dataset.paint;
-      // 代わりの絵具が見つかったときだけ「切らしている」にする（見つからなければ絵具箱の設定は変えない）
-      const res = PaintDB.substitute(S.candidates[i], pid, representative(), owned());
-      if (!res) return toast('代替できる絵具がありません（絵具箱の設定は変えていません）');
-      warnIfFailed(Store.setRunOut(pid, true));
-      S.candidates[i] = res;
-      S.subbing = null;
-      stopReverse();
-      S.candKey = candKeyNow(); // 切らしている分で計算し直さず、置き換えた候補を残す
-      renderCandidates();
-      toast(`${paintName(pid)} を「切らしている」にしました（買い直したら絵具箱で外せます）`);
+    // 絵具名：絵具箱でその絵具だけを表示する（切らしているにして戻ると、所持が変わるので候補を計算し直す）
+    const focus = e.target.closest('[data-focus]');
+    if (focus) {
+      const p = PaintDB.byId[focus.dataset.focus];
+      if (!p) return;
+      PF.focus = p.id;
+      PF.line = p.line;
+      S.backToCands = true;
+      location.hash = '#paints';
     }
   });
 
@@ -978,7 +969,6 @@
       candidates: (e.estimated || []).map((c) => ({ ...c, ...PaintDB.evaluate(c.items, Color.parseHex(e.hex)) })),
       mix: (e.actual || []).map((x) => ({ ...x })),
       candTime: null,
-      subbing: null,
       recalled: e.id,
     });
     stopReverse(); // 計算中の候補で、呼び出した候補を上書きしない
@@ -1097,7 +1087,8 @@
   });
 
   // ================= 絵具箱 =================
-  const PF = { line: PaintDB.lines[0].id, ownedOnly: false, q: '' }; // 絵具箱の絞り込み（ラインは1つずつ表示する）
+  // 絵具箱の絞り込み（ラインは1つずつ表示する）。focus は調色候補の絵具名から開いた絵具の id（その絵具だけを表示する）
+  const PF = { line: PaintDB.lines[0].id, ownedOnly: false, q: '', focus: null };
 
   // 品番（「8」でも「008」でも可。前方一致）または色名の一部で探す。空白は無視する。品番のない絵具（ベーシックス）は色名だけで探す
   function matchPaint(p, q) {
@@ -1106,6 +1097,7 @@
     return p.name.replace(/\s/g, '').includes(q);
   }
   function shownPaints() {
+    if (PF.focus) return [PaintDB.byId[PF.focus]];
     const q = PF.q.replace(/[\s　]/g, '').replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xFEE0));
     return PaintDB.paints.filter((p) => p.line === PF.line && matchPaint(p, q) && (!PF.ownedOnly || Store.isOwned(p.id)));
   }
@@ -1123,6 +1115,12 @@
     $('#paint-source').textContent = `出典：${line.chart}の${lp.some((p) => p.no) ? '品番・' : ''}色名・透明度。${line.name}は${lp.length}色で、うちメタリック・蛍光・イリディッセントの${special}色は計算対象外です。色見本はチャートから取った色で、実際の絵具の色とは異なります。混色はこの色から Mixbox で計算します。`;
     const W = PaintDB.byId[PaintDB.whiteOf[PF.line]?.id || PaintDB.WHITE_ID]; // 同じラインのチタニウムホワイトと混ぜる
     const list = shownPaints();
+    // 候補から開いたときは、その絵具だけを表示し、ラインの切り替え・検索は隠して戻るボタンを出す
+    const fp = PF.focus && PaintDB.byId[PF.focus];
+    $('.paint-filters').hidden = !!fp;
+    $('#paint-focus').hidden = !fp;
+    if (fp) $('#paint-focus').innerHTML = `${sw(fp.hex)}<span>調色候補から開いた絵具：<b>${esc(fp.fullLabel)}</b><br><small>手元にないときは「切らした」を押して戻ると、この絵具を除いて計算し直します</small></span>
+      <div class="row gap-s wrap"><a class="btn btn-primary btn-s" href="#mix">調色に戻る</a><button type="button" class="btn btn-ghost btn-s" id="btn-unfocus">すべての絵具を表示</button></div>`;
     $('#btn-unown-shown').disabled = !list.some((p) => Store.isOwned(p.id)); // 解除する絵具がないときは押せない
     $('#paint-rows').innerHTML = list.length ? list.map((p) => {
       const owned = Store.isOwned(p.id);
@@ -1151,6 +1149,9 @@
   $('#paint-rows').addEventListener('click', (e) => {
     const b = e.target.closest('[data-out]');
     if (b) { warnIfFailed(Store.setRunOut(b.dataset.out, !Store.isRunOut(b.dataset.out))); renderPaints(); }
+  });
+  $('#paint-focus').addEventListener('click', (e) => {
+    if (e.target.closest('#btn-unfocus')) { PF.focus = null; renderPaints(); }
   });
   $('#paint-lines').addEventListener('click', (e) => {
     const b = e.target.closest('[data-line]');

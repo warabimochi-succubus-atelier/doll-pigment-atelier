@@ -205,24 +205,6 @@ const PaintDB = (() => {
       .slice(0, top);
   }
 
-  // 絵具置換：指定絵具を、マストーンが最も近い別の絵具に置き換えて割合を再計算
-  function substitute(candidate, paintId, targetRgb, availableIds) {
-    const targetLab = Color.rgbToLab(targetRgb);
-    const used = new Set(candidate.items.map((x) => x.paintId));
-    const from = byId[paintId];
-    const rest = candidate.items.filter((x) => x.paintId !== paintId).map((x) => byId[x.paintId]);
-    const alt = availableIds
-      .filter((id) => !used.has(id) && id !== paintId)
-      .map((id) => byId[id])
-      .filter((p) => p && p.mixable && !sameName(rest, p))
-      .sort((a, b) => Color.dE00(a.lab, from.lab) - Color.dE00(b.lab, from.lab))[0];
-    if (!alt) return null;
-    const set = candidate.items.map((x) => (x.paintId === paintId ? alt : byId[x.paintId]));
-    const res = finalize(bestForSet(set, targetLab), targetLab);
-    res.substituted = { from: from.id, to: alt.id };
-    return res;
-  }
-
   function evaluate(items, targetRgb) {
     const valid = items.filter((x) => byId[x.paintId] && x.pct > 0);
     if (!valid.length) return null;
@@ -232,5 +214,5 @@ const PaintDB = (() => {
     return out;
   }
 
-  return { lines, lineById, paints, byId, OPACITY, WHITE_ID, WHITE_IDS, whiteOf, STARTER_IDS, mediums, mediumById, mixRgb, reverse, substitute, evaluate };
+  return { lines, lineById, paints, byId, OPACITY, WHITE_ID, WHITE_IDS, whiteOf, STARTER_IDS, mediums, mediumById, mixRgb, reverse, evaluate };
 })();
