@@ -107,7 +107,11 @@ a.btn { color: inherit; text-decoration: none; } /* リンクで作ったボタ�
 .btn-s { padding: 4px 10px; font-size: 12px; }
 .btn-block { width: 100%; margin-top: 12px; }
 .btn.on { background: var(--accent-2); border-color: var(--accent); color: var(--accent); }
-.icon-btn { border: 0; background: transparent; cursor: pointer; font-size: 18px; color: var(--ink-2); padding: 0 6px; line-height: 1; }
+.icon-btn { display: inline-grid; place-items: center; border: 0; background: transparent; cursor: pointer; font-size: 18px; color: var(--ink-2); padding: 0 6px; line-height: 1; }
+/* 操作のアイコン（SVG）。文字と同じ色で描く */
+.ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.icon-btn .ic { width: 18px; height: 18px; }
+.btn-s .ic { width: 14px; height: 14px; }
 .link { border: 0; background: none; color: var(--accent); cursor: pointer; font-size: 12px; padding: 0; }
 .link-danger { color: var(--bad); font-size: 13px; padding: 8px 4px; text-decoration: underline; text-underline-offset: 3px; }
 input:not([type=checkbox]):not([type=file]):not([type=range]), select, textarea {
@@ -120,7 +124,7 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
 .seg button { border: 0; background: transparent; color: inherit; font: inherit; padding: 6px 12px; cursor: pointer; font-size: 13px; }
 .seg-lines { justify-self: start; max-width: 100%; }
-.seg-lines small { margin-left: 4px; color: var(--ink-2); font-weight: 400; }
+.seg-lines small { margin-left: 4px; color: var(--ink-2); font-weight: 400; white-space: nowrap; } /* 「所持数 / 色数」を途中で折り返さない */
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button.on { background: var(--accent-2); color: var(--accent); font-weight: 600; }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); color: var(--ink-2); }
@@ -140,10 +144,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .img-strip .thumb-x {
   position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px;
   background: rgba(0,0,0,.6); color: #fff; font-size: 15px; line-height: 24px; cursor: pointer;
+  display: grid; place-items: center;
 }
 .img-strip .thumb-x:hover { background: rgba(0,0,0,.8); }
 /* 画像の × は見た目の丸より広い範囲（40px 四方）で押せるようにする */
 .thumb-x::after { content: ""; position: absolute; inset: -8px; }
+.thumb-x .ic { width: 14px; height: 14px; stroke-width: 2.4; }
+.chip-x .ic { width: 14px; height: 14px; stroke-width: 2.2; }
 .img-stage {
   margin-top: 10px; border-radius: 12px; background: var(--surface-2); min-height: 260px;
   display: grid; place-items: center; overflow: hidden;
@@ -234,6 +241,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .recipe { list-style: none; margin: 0; padding: 0; width: 100%; display: grid; gap: 4px; }
 .recipe li { display: grid; grid-template-columns: 18px 1fr 64px 40px auto; gap: 8px; align-items: center; font-size: 13px; }
 .recipe.compact li { grid-template-columns: 18px 1fr auto; }
+/* 調色候補の絵具名は1行目に幅いっぱいで出し、割合のバーと%は2行目に出す（名前が細い列で何行にも折り返さないように） */
+.cands .recipe li { grid-template-columns: 18px 1fr 44px; grid-template-areas: "sw name name" ". bar pct"; row-gap: 2px; }
+.cands .recipe li > .sw { grid-area: sw; }
+.cands .recipe li > .pname { grid-area: name; }
+.cands .recipe li > .bar { grid-area: bar; }
+.cands .recipe li > b { grid-area: pct; }
 .pname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bar { height: 6px; background: var(--surface-2); border-radius: 3px; overflow: hidden; }
 .bar i { display: block; height: 100%; background: var(--accent); }
@@ -247,10 +260,10 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .mix-wrap { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
 .mix-rows { display: grid; gap: 8px; align-content: start; }
 .mix-row {
-  display: grid; grid-template-columns: 18px 1fr 64px 16px 40px; gap: 4px 8px; align-items: center;
+  display: grid; grid-template-columns: 22px 1fr 64px 16px 40px; gap: 4px 8px; align-items: center;
   grid-template-areas: "sw name name name rm" ". range num unit .";
 }
-.mix-row > .sw { grid-area: sw; }
+.mix-row > .sw { grid-area: sw; width: 22px; height: 22px; border-radius: 50%; } /* 丸にして、白い絵具でもチェックボックスに見えないようにする */
 .mix-row select { grid-area: name; }
 .mix-row [data-rm] { grid-area: rm; width: 40px; height: 40px; border-radius: 9px; padding: 0; }
 .mix-row [data-rm]:hover { background: var(--surface-2); color: var(--bad); }
@@ -363,11 +376,13 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .tag-out.on { border-color: transparent; background: color-mix(in srgb, #c45a3b 14%, transparent); color: #a8482e; font-weight: 600; }
 .paints tr.run-out .pcell .sw { opacity: .45; }
 .paint-filters { display: grid; gap: 10px; }
-label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+label.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; min-height: 32px; }
+label.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .ladder { display: flex; gap: 3px; }
 .ladder span { width: 52px; height: 30px; border-radius: 6px; position: relative; border: 1px solid rgba(0,0,0,.08); }
 .ladder small { position: absolute; left: 4px; bottom: 0; font-size: 9px; color: #fff; text-shadow: 0 0 3px rgba(0,0,0,.7); }
 .ladder-in { display: none; } /* スマホで絵具名の下に出す混色見本（PC では3列目に出す） */
+.danger-zone { margin-top: 16px; padding-top: 14px; border-top: 1px dashed var(--line); display: flex; align-items: center; gap: 8px 12px; flex-wrap: wrap; } /* 取り消せない操作は、ほかのボタンから離して置く */
 .plain { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 12px; } /* 設定画面のほかの説明文（.hint）と同じ大きさ */
 
 /* ---- dialog ---- */
@@ -397,7 +412,7 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
 .thumbs img { width: 84px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
 .thumb-box { position: relative; }
 .thumb-view { padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 8px; }
-.thumb-box .thumb-x { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; text-shadow: none; font-size: 15px; line-height: 24px; cursor: pointer; }
+.thumb-box .thumb-x { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; text-shadow: none; font-size: 15px; line-height: 24px; cursor: pointer; display: grid; place-items: center; }
 .dialog.viewer { width: min(960px, calc(100% - 24px)); }
 .viewer-body { padding: 12px; display: flex; justify-content: center; overflow: auto; }
 .viewer-body img { max-width: 100%; max-height: calc(100dvh - 140px); object-fit: contain; border-radius: 8px; }
@@ -453,6 +468,9 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
   .cands { grid-template-columns: 1fr; }
   .cand { gap: 10px; padding: 10px; }
   .cand-sw { width: 40px; }
+  .seg-lines { display: flex; width: 100%; }
+  .seg-lines button { flex: 1 1 0; padding: 6px 4px; }
+  .seg-lines small { display: block; margin-left: 0; }
   .filters > * { flex: 1 1 40%; }
   .filters > .grow { flex-basis: 100%; }
   /* 混色見本は3列目ではなく絵具名の下に出し、絵具名の欄を広く取る（名前が改行されないように） */
@@ -472,4 +490,7 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
   .zoom-tools { gap: 4px; }
   .zoom-tools .icon-btn { width: 36px; height: 36px; }
   .icon-btn { min-width: 36px; min-height: 36px; }
+  .about-btn { width: 40px; height: 40px; }
+  label.check { min-height: 40px; }
+  label.check input { width: 20px; height: 20px; }
 }

@@ -62,9 +62,9 @@
           <div class="card-head">
             <h2><span class="step">1</span>目標の色を取る</h2>
             <div class="row gap-s">
-              <label class="btn btn-ghost">画像を追加<input type="file" id="img-input" accept="image/*" multiple hidden></label>
+              <label class="btn btn-ghost"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4z"/><path d="M4 16l4.5-4.5 3.5 3.5 2.5-2.5L20 18"/><circle cx="15.5" cy="9" r="1.6"/></svg>画像を追加<input type="file" id="img-input" accept="image/*" multiple hidden></label>
               <button class="btn btn-ghost" id="btn-camera">
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
+                <svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.5-2h7L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
                 カメラで撮影
               </button>
               <!-- スマホでは端末のカメラアプリで撮影する -->
@@ -75,9 +75,9 @@
           <div id="img-stage" class="img-stage"></div>
           <div id="img-tools" class="img-tools" hidden>
             <div class="zoom-tools" role="group" aria-label="表示の拡大">
-              <button class="icon-btn" id="zoom-out" title="縮小" aria-label="縮小">−</button>
+              <button class="icon-btn" id="zoom-out" title="縮小" aria-label="縮小"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></button>
               <span class="mono" id="zoom-val">100%</span>
-              <button class="icon-btn" id="zoom-in" title="拡大" aria-label="拡大">＋</button>
+              <button class="icon-btn" id="zoom-in" title="拡大" aria-label="拡大"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg></button>
               <button class="btn btn-ghost btn-s" id="zoom-fit" title="画像全体を表示">全体</button>
             </div>
             <button class="btn btn-ghost btn-s" id="btn-pan" aria-pressed="false" title="ドラッグで画像を動かす">移動</button>
@@ -125,7 +125,7 @@
       <div class="card" id="mix-card">
         <div class="card-head">
           <h2><span class="step">4</span>実際の調色（手動調整）</h2>
-          <button class="btn btn-ghost btn-s" id="btn-add-row">＋ 絵具を追加</button>
+          <button class="btn btn-ghost btn-s" id="btn-add-row"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 6v12M6 12h12"/></svg>絵具を追加</button>
         </div>
         <!-- レシピ帳から呼び出したときの案内（呼び出した調色はここに入る） -->
         <div id="recall-banner" class="banner" hidden></div>
@@ -208,7 +208,10 @@
         <div class="row gap-s wrap card-actions">
           <button class="btn btn-ghost" id="btn-persist">永続保存を要求</button>
           <button class="btn btn-ghost" id="btn-add-sample">サンプルのカラーを追加</button>
+        </div>
+        <div class="danger-zone">
           <button class="btn btn-danger" id="btn-wipe">すべて削除</button>
+          <span class="hint">レシピ帳のすべてのカラーと画像を消します（絵具箱の設定は残ります）。元に戻せないので、先にエクスポートしておいてください。</span>
         </div>
       </div>
       <div class="card">

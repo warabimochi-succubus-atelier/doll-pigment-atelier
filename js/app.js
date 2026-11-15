@@ -6,6 +6,13 @@
   const stars = (n) => '★'.repeat(n) + '<span class="off">' + '★'.repeat(5 - n) + '</span>';
   const paintName = (id) => PaintDB.byId[id]?.fullLabel || id; // 品番＋色名（ライン）
   const sw = (hex, cls = '') => `<span class="sw ${cls}" style="background:${hex}"></span>`;
+  // 操作のアイコン（文字の × や → はフォントで太さや位置が変わるため、SVG にそろえる。index.html の静的なアイコンと同じ描き方）
+  const icon = (d) => `<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="${d}"/></svg>`;
+  const IC = {
+    x: icon('M6.5 6.5l11 11M17.5 6.5l-11 11'),
+    down: icon('M12 5v14M6.5 13.5L12 19l5.5-5.5'),
+    right: icon('M5 12h14M13.5 6.5L19 12l-5.5 5.5'),
+  };
   // 明るい色の上に文字を載せるときは、白ではなく濃い色の文字にする（白との混色見本や、目標・混色の見本）
   const onLight = (hex) => (Color.rgbToLab(Color.parseHex(hex))[0] > 66 ? 'on-light' : '');
   // 調色候補の計算には、所持していて切らしていない絵具を使う
@@ -161,7 +168,7 @@
           <img src="${i.thumb}" alt="">
           ${i.gains ? '<span class="thumb-tag own">補正済</span>' : ''}
         </button>
-        <button class="thumb-x" data-del="${i.id}" title="この画像を外す" aria-label="「${esc(i.name)}」を外す">×</button>
+        <button class="thumb-x" data-del="${i.id}" title="この画像を外す" aria-label="「${esc(i.name)}」を外す">${IC.x}</button>
       </div>`).join('');
     const img = curImg();
     $('#img-tools').hidden = !img;
@@ -381,7 +388,7 @@
         return `<div class="chip ${de ? 'outlier' : ''}" data-id="${x.id}" ${de ? 'title="照明の違いや、取る場所のずれがないか確認してください。外れた色なら × で除きます（意図して条件の違う画像を入れている場合は、そのままで構いません）"' : ''}>
           ${sw(Color.toHex(x.rgb))}
           <span><b>${x.label}</b> ${Color.toHex(x.rgb)}<small>${esc(img?.name || '')}</small>${de ? `<em class="flag">ほかと色が離れています（ΔE ${de.toFixed(1)}）</em>` : ''}</span>
-          <button class="chip-x" data-del="${x.id}" title="取り消す" aria-label="${x.label} を取り消す">×</button></div>`;
+          <button class="chip-x" data-del="${x.id}" title="取り消す" aria-label="${x.label} を取り消す">${IC.x}</button></div>`;
       }).join('')
       : `<div class="empty small">${isTouch ? '手順1の画像をタップする（範囲は長押ししてから囲む）' : '手順1の画像をクリックかドラッグする'}と、ここに抽出色が並びます</div>`;
     // 呼び出し・数値指定の色を代表色にしているときだけ案内する
@@ -575,7 +582,7 @@
               <span class="bar"><i style="width:${x.pct}%"></i></span><b class="mono">${x.pct}%</b></li>`).join('')}
           </ul>
           <div class="row gap-s wrap">
-            <button class="btn btn-ghost btn-s" data-use="${i}">この候補で調整する ↓</button>
+            <button class="btn btn-ghost btn-s" data-use="${i}">この候補で調整する${IC.down}</button>
           </div>
         </div>
       </div>`).join('') + (S.candTime == null
@@ -623,12 +630,12 @@
         <div class="mix-row" data-i="${i}">
           ${sw(PaintDB.byId[m.paintId]?.hex || '#ccc')}
           <select data-k="paintId">${paintOptions(m.paintId)}</select>
-          <button class="icon-btn" data-rm="${i}" title="この絵具を外す" aria-label="この絵具を外す">×</button>
+          <button class="icon-btn" data-rm="${i}" title="この絵具を外す" aria-label="この絵具を外す">${IC.x}</button>
           <input type="range" data-k="pct" value="${m.pct}" min="0" max="100" step="1" aria-label="割合">
           <input type="number" data-k="pct" value="${m.pct}" min="0" max="100" step="1" class="mono" aria-label="割合（%）">
           <span class="unit">%</span>
         </div>`).join('')
-      : '<div class="empty small">候補の「この候補で調整する」か「＋ 絵具を追加」から始めます</div>';
+      : '<div class="empty small">候補の「この候補で調整する」か「絵具を追加」から始めます</div>';
     renderMixPreview();
   }
   function renderMixPreview() {
@@ -740,7 +747,7 @@
 
   // サムネイル（押すと本画像を開く）。rm を渡すと削除ボタンを付ける
   const thumbButton = (ref, rm) => Store.hasImage(ref.imageId)
-    ? `<span class="thumb-box"><button type="button" class="thumb-view" data-view="${ref.imageId}" data-name="${esc(ref.name)}" title="${esc(ref.name || '画像を開く')}"><img src="${Store.thumbUrl(ref.imageId)}" alt="${esc(ref.name)}"></button>${rm != null ? `<button type="button" class="thumb-x" data-rm-rec="${rm}" title="この記録画像を外す" aria-label="この記録画像を外す">×</button>` : ''}</span>`
+    ? `<span class="thumb-box"><button type="button" class="thumb-view" data-view="${ref.imageId}" data-name="${esc(ref.name)}" title="${esc(ref.name || '画像を開く')}"><img src="${Store.thumbUrl(ref.imageId)}" alt="${esc(ref.name)}"></button>${rm != null ? `<button type="button" class="thumb-x" data-rm-rec="${rm}" title="この記録画像を外す" aria-label="この記録画像を外す">${IC.x}</button>` : ''}</span>`
     : '';
   const recThumbs = (list) => (list || []).map((r, i) => thumbButton(r, i)).join('') || '<div class="empty small">仕上がりの写真を追加できます</div>';
 
@@ -771,7 +778,7 @@
           <input name="name" class="title-input" placeholder="名称（例：コーラルピンクチーク）" value="${esc(e.name)}" required>
           <div class="mono small">${e.hex} · RGB ${rgb.join(', ')} · Lab ${Color.fmtLab(Color.rgbToLab(rgb))}</div>
         </div>
-        <button type="button" class="icon-btn" data-act="close" title="閉じる" ${e.name ? 'autofocus' : ''}>×</button>
+        <button type="button" class="icon-btn" data-act="close" title="閉じる" aria-label="閉じる" ${e.name ? 'autofocus' : ''}>${IC.x}</button>
       </div>
       <div class="dlg-body">
         <div class="form-grid">
@@ -808,7 +815,7 @@
         ${!isNew && !opt.fromMix ? `<button type="button" class="link link-danger" data-act="delete">削除</button>
           <span class="grow"></span>
           <button type="submit" class="btn btn-ghost" data-act="save" disabled title="書き換えた内容をレシピ帳に保存します">変更を保存</button>
-          <button type="button" class="btn btn-primary" data-act="recall" title="このレシピを調色の画面に読み込みます">調色に呼び出す →</button>`
+          <button type="button" class="btn btn-primary" data-act="recall" title="このレシピを調色の画面に読み込みます">調色に呼び出す${IC.right}</button>`
         : `<span class="grow"></span>
           ${opt.baseId ? '<button type="submit" class="btn btn-ghost" data-act="overwrite" title="レシピ帳の呼び出し元のカラーを更新します">上書き保存</button>' : ''}
           <button type="submit" class="btn btn-primary" data-act="new" ${opt.baseId ? 'title="呼び出し元を残して、別のカラーとしてレシピ帳に追加します"' : ''}>${opt.baseId ? 'レシピ帳に追加' : 'レシピ帳に保存'}</button>`}
@@ -977,7 +984,7 @@
     stopReverse(); // 計算中の候補で、呼び出した候補を上書きしない
     S.candKey = candKeyNow();
     const b = $('#recall-banner');
-    b.innerHTML = `${sw(e.hex)} <span>「<b>${esc(e.name)}</b>」の調色を呼び出しました。下の絵具と割合を微調整して、上書き保存するか、別のカラーとしてレシピ帳に追加できます。</span><button class="icon-btn" id="btn-unrecall" title="呼び出しをやめる">×</button>`;
+    b.innerHTML = `${sw(e.hex)} <span>「<b>${esc(e.name)}</b>」の調色を呼び出しました。下の絵具と割合を微調整して、上書き保存するか、別のカラーとしてレシピ帳に追加できます。</span><button class="icon-btn" id="btn-unrecall" title="呼び出しをやめる" aria-label="呼び出しをやめる">${IC.x}</button>`;
     b.hidden = false;
     $('#btn-unrecall').onclick = clearRecall;
     renderImages(); renderExtracted(); renderCandidates(); renderMix();
