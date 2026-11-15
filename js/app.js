@@ -1286,7 +1286,15 @@
 
   // ================= このアプリについて =================
   const aboutDlg = $('#about-dialog');
-  const openAbout = () => { if (!aboutDlg.open) openModal(aboutDlg); };
+  // ダイアログ自体にフォーカスし、開くたびに先頭から表示する。最初のリンクにフォーカスすると、
+  // 高さの足りない横向きのスマホでそこまでスクロールし、先頭が隠れるため。index.html の autofocus だけでは
+  // ブラウザによってスクロールする本文などにフォーカスが移るので、開いたあとにもダイアログへフォーカスし直す
+  const openAbout = () => {
+    if (aboutDlg.open) return;
+    openModal(aboutDlg);
+    aboutDlg.focus({ preventScroll: true });
+    $('.about-body', aboutDlg).scrollTop = 0;
+  };
   $('#btn-about').addEventListener('click', openAbout);
   aboutDlg.addEventListener('click', (e) => { if (e.target === aboutDlg) aboutDlg.close(); }); // 背景クリックで閉じる
 
