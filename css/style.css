@@ -54,10 +54,21 @@ input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offs
   padding: 10px 24px; background: color-mix(in srgb, var(--bg) 88%, transparent);
   backdrop-filter: blur(10px); border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 10px; }
-.brand-icon { border-radius: 8px; display: block; }
-.brand-name { font-weight: 700; letter-spacing: .02em; }
-.brand-sub { font-size: 11px; color: var(--ink-2); line-height: 1; }
+/* アイコンと名前・版のまとまり全体が「このアプリについて」を開くボタン */
+.brand-heading { display: flex; margin: 0; min-width: 0; font: inherit; }
+.brand {
+  display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 44px;
+  margin-left: -8px; padding: 4px 10px 4px 8px; border: 1px solid transparent; border-radius: 12px;
+  background: transparent; text-align: left; cursor: pointer;
+}
+@media (hover: hover) { .brand:hover { border-color: var(--line); background: var(--surface); } }
+.brand:active { background: var(--surface-2); }
+.brand-icon { border-radius: 8px; display: block; flex: none; }
+.brand-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.brand-name { font-weight: 700; letter-spacing: .02em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.brand-sub { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--ink-2); line-height: 1; }
+.info-ic { width: 12px; height: 12px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+.info-ic .dot { fill: currentColor; }
 .tabs { display: flex; gap: 4px; }
 .tabs a {
   display: inline-flex; align-items: center; gap: 6px;
@@ -436,11 +447,6 @@ label.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ac
 .viewer-body img { max-width: 100%; max-height: calc(100dvh - 140px); object-fit: contain; border-radius: 8px; }
 
 /* ---- about ---- */
-.about-btn {
-  margin-left: auto; display: grid; place-items: center; width: 36px; height: 36px; flex: none;
-  border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink-2); cursor: pointer;
-}
-.about-btn:hover { color: var(--accent); border-color: var(--accent); }
 .dialog.about { width: min(480px, calc(100% - 24px)); }
 .about-body { padding: 28px 24px 20px; text-align: center; overflow-y: auto; }
 .about-icon { border-radius: 22px; box-shadow: 0 4px 16px rgba(60, 40, 45, .18); }
@@ -508,7 +514,6 @@ label.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ac
   .zoom-tools { gap: 4px; }
   .zoom-tools .icon-btn { width: 36px; height: 36px; }
   .icon-btn { min-width: 36px; min-height: 36px; }
-  .about-btn { width: 40px; height: 40px; }
   label.check { min-height: 40px; }
   label.check input { width: 20px; height: 20px; }
   .stars-input { gap: 4px; }
