@@ -12,17 +12,21 @@
   --bad: #c0503f;
   --shadow: 0 1px 2px rgba(60, 40, 45, .06), 0 4px 16px rgba(60, 40, 45, .05);
   --radius: 14px;
+  /* 絵具の性質のタグ（透明・半透明・販売中止・切らしている）の文字色。ダークモードでは明るくする */
+  --tag-blue: #2e6ea8; --tag-purple: #6c55a8; --tag-red: #a8482e;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #1d181a; --surface: #262022; --surface-2: #2f282a; --ink: #f1e8ea; --ink-2: #b3a3a8;
     --line: #3e3437; --accent: #e08ba1; --accent-2: #45303a; --shadow: none; color-scheme: dark;
+    --good: #6cc495; --ok: #e0b552; --bad: #ec8a7a; --tag-blue: #8fbbe6; --tag-purple: #bba8ec; --tag-red: #ec9a84;
   }
 }
 :root[data-theme="dark"] {
   --bg: #1d181a; --surface: #262022; --surface-2: #2f282a; --ink: #f1e8ea; --ink-2: #b3a3a8;
   --line: #3e3437; --accent: #e08ba1; --accent-2: #45303a; --shadow: none; color-scheme: dark;
+    --good: #6cc495; --ok: #e0b552; --bad: #ec8a7a; --tag-blue: #8fbbe6; --tag-purple: #bba8ec; --tag-red: #ec9a84;
 }
 
 * { box-sizing: border-box; }
@@ -38,6 +42,11 @@ body {
 h2 { font-size: 15px; margin: 0; display: flex; align-items: center; gap: 8px; }
 h3 { font-size: 13px; margin: 18px 0 8px; color: var(--ink-2); display: flex; align-items: center; gap: 8px; }
 button, input, select, textarea { font: inherit; color: inherit; }
+/* タッチで押したときの灰色の四角は出さず、代わりに各ボタンの :active で押したことを示す */
+a, button, label, select, summary { -webkit-tap-highlight-color: transparent; }
+/* キーボードで移動したときだけ、フォーカスの位置をアクセント色の枠で示す */
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+input:focus-visible, select:focus-visible, textarea:focus-visible { outline-offset: 0; }
 
 /* ---- header / tabs ---- */
 .topbar {
@@ -99,6 +108,15 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 80px; }
 }
 .btn:hover { border-color: var(--accent); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+/* 押している間の反応（タッチでは :hover が出ないため） */
+.btn:active:not(:disabled) { background: var(--surface-2); border-color: var(--accent); }
+.btn-primary:active:not(:disabled) { background: var(--accent); filter: brightness(.92); }
+.btn-danger:active:not(:disabled) { background: color-mix(in srgb, var(--bad) 10%, transparent); }
+.icon-btn:active:not(:disabled), .chip .chip-x:active, .mix-row [data-rm]:active { background: var(--surface-2); }
+.thumb-x:active { background: rgba(0,0,0,.85) !important; }
+.tabs a:active .tab-ic, .seg button:active, .choices button:active, .tag-out:active { filter: brightness(.94); }
+.entry:active, .sim-row:active, .cand:has(.plink:active) { border-color: var(--accent); }
+.link:active, .plink:active { opacity: .7; }
 a.btn { color: inherit; text-decoration: none; } /* リンクで作ったボタンも、ほかのボタンと同じ見た目にする */
 .btn-primary, a.btn-primary { background: var(--accent); border-color: var(--accent); color: #fff; } /* リンクで作ったときも白い文字にする（a.btn の文字色より優先する） */
 .btn-primary:hover { filter: brightness(1.06); }
@@ -366,14 +384,14 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pno { display: inline-block; min-width: 2.6em; margin-right: 4px; font-size: 12px; color: var(--ink-2); }
 #paint-q { width: 100%; }
 .ptags { display: flex; gap: 4px; flex-wrap: wrap; margin: 3px 0 0 26px; }
-.tag.op-transparent { background: color-mix(in srgb, #3b82c4 14%, transparent); color: #2e6ea8; }
-.tag.op-semi { background: color-mix(in srgb, #8a6fc4 14%, transparent); color: #6c55a8; }
+.tag.op-transparent { background: color-mix(in srgb, #3b82c4 14%, transparent); color: var(--tag-blue); }
+.tag.op-semi { background: color-mix(in srgb, #8a6fc4 14%, transparent); color: var(--tag-purple); }
 .tag.op-opaque { background: var(--surface-2); color: var(--ink-2); }
-.tag.tag-stop { background: color-mix(in srgb, #c45a3b 12%, transparent); color: #a8482e; }
+.tag.tag-stop { background: color-mix(in srgb, #c45a3b 12%, transparent); color: var(--tag-red); }
 .tag-muted { background: transparent; border: 1px dashed var(--line); color: var(--ink-2); }
 /* 切らしている（所持している絵具の切り替え。押せることがわかるよう枠を付ける） */
 .tag-out { padding: 2px 9px; border: 1px solid var(--line); background: transparent; color: var(--ink-2); cursor: pointer; font: inherit; font-size: 11px; line-height: inherit; }
-.tag-out.on { border-color: transparent; background: color-mix(in srgb, #c45a3b 14%, transparent); color: #a8482e; font-weight: 600; }
+.tag-out.on { border-color: transparent; background: color-mix(in srgb, #c45a3b 14%, transparent); color: var(--tag-red); font-weight: 600; }
 .paints tr.run-out .pcell .sw { opacity: .45; }
 .paint-filters { display: grid; gap: 10px; }
 label.check { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; min-height: 32px; }
@@ -493,4 +511,6 @@ label.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ac
   .about-btn { width: 40px; height: 40px; }
   label.check { min-height: 40px; }
   label.check input { width: 20px; height: 20px; }
+  .stars-input { gap: 4px; }
+  .stars-input button { min-width: 36px; min-height: 36px; font-size: 26px; }
 }
