@@ -51,8 +51,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .brand-sub { font-size: 11px; color: var(--ink-2); line-height: 1; }
 .tabs { display: flex; gap: 4px; }
 .tabs a {
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 7px 14px; border-radius: 999px; color: var(--ink-2); text-decoration: none; white-space: nowrap;
 }
+.tab-ic { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tab-ic .dot { fill: currentColor; stroke: none; }
 .tabs a:hover { background: var(--surface-2); }
 .tabs a.active { background: var(--accent); color: #fff; }
 
@@ -139,6 +142,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
   background: rgba(0,0,0,.6); color: #fff; font-size: 15px; line-height: 24px; cursor: pointer;
 }
 .img-strip .thumb-x:hover { background: rgba(0,0,0,.8); }
+/* 画像の × は見た目の丸より広い範囲（40px 四方）で押せるようにする */
+.thumb-x::after { content: ""; position: absolute; inset: -8px; }
 .img-stage {
   margin-top: 10px; border-radius: 12px; background: var(--surface-2); min-height: 260px;
   display: grid; place-items: center; overflow: hidden;
@@ -202,7 +207,12 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .chips.dim { opacity: .45; }
 .chip.outlier { border-color: var(--ok); background: color-mix(in srgb, var(--ok) 10%, var(--surface)); }
 .chip .flag { display: block; font-style: normal; font-size: 10px; color: var(--ok); font-weight: 600; }
-.chip .chip-x { border: 0; background: none; cursor: pointer; font-size: 13px; line-height: 1; }
+/* × は見た目より広く押せるようにする（チップの高さは変えず、余白に食い込ませる） */
+.chip .chip-x {
+  display: grid; place-items: center; min-width: 32px; min-height: 32px; margin: -6px -6px -6px -2px; padding: 0;
+  border: 0; border-radius: 8px; background: none; cursor: pointer; font-size: 15px; line-height: 1;
+}
+.chip .chip-x:hover { background: var(--surface-2); color: var(--bad); }
 
 /* ---- candidates ---- */
 .cands { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
@@ -237,12 +247,13 @@ input:focus, select:focus, textarea:focus { outline: 2px solid color-mix(in srgb
 .mix-wrap { display: grid; grid-template-columns: 1fr 300px; gap: 20px; }
 .mix-rows { display: grid; gap: 8px; align-content: start; }
 .mix-row {
-  display: grid; grid-template-columns: 18px 1fr 64px 16px 24px; gap: 4px 8px; align-items: center;
+  display: grid; grid-template-columns: 18px 1fr 64px 16px 40px; gap: 4px 8px; align-items: center;
   grid-template-areas: "sw name name name rm" ". range num unit .";
 }
 .mix-row > .sw { grid-area: sw; }
 .mix-row select { grid-area: name; }
-.mix-row [data-rm] { grid-area: rm; }
+.mix-row [data-rm] { grid-area: rm; width: 40px; height: 40px; border-radius: 9px; padding: 0; }
+.mix-row [data-rm]:hover { background: var(--surface-2); color: var(--bad); }
 .mix-row input[type=range] { grid-area: range; width: 100%; margin: 0; accent-color: var(--accent); }
 .mix-row input[type=number] { grid-area: num; text-align: right; }
 .mix-row .unit { grid-area: unit; }
@@ -334,7 +345,10 @@ table.paints { width: 100%; border-collapse: collapse; font-size: 13px; }
 .paints td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
 .paints .num { text-align: right; white-space: nowrap; }
 .paints.fade-unowned tr.unowned td:not(:first-child) { opacity: .55; }
-.paints td:first-child input { width: 18px; height: 18px; }
+/* 「所持」はセル全体を押せるようにする（チェックボックスだけでは小さく、押し損じやすいため） */
+.paints td.own-cell { position: relative; width: 48px; padding: 0; }
+.own-hit { position: absolute; inset: 0; display: grid; place-items: center; cursor: pointer; }
+.own-hit input { width: 22px; height: 22px; margin: 0; cursor: pointer; accent-color: var(--accent); }
 .pcell { display: flex; gap: 8px; align-items: center; min-width: 9em; }
 .pno { display: inline-block; min-width: 2.6em; margin-right: 4px; font-size: 12px; color: var(--ink-2); }
 #paint-q { width: 100%; }
@@ -379,11 +393,11 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
 .stars-input button.on { color: #e0a22f; }
 .sub { font-size: 12px; color: var(--ink-2); margin-bottom: 4px; }
 .mini-cand { margin-bottom: 8px; }
-.thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.thumbs { display: flex; gap: 12px; flex-wrap: wrap; padding-top: 6px; } /* 右上の × を押す範囲が隣の画像に重ならないよう間隔を取る */
 .thumbs img { width: 84px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); display: block; }
 .thumb-box { position: relative; }
 .thumb-view { padding: 0; border: 0; background: none; cursor: zoom-in; border-radius: 8px; }
-.thumb-box .thumb-x { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; text-shadow: none; font-size: 13px; line-height: 20px; cursor: pointer; }
+.thumb-box .thumb-x { position: absolute; top: -8px; right: -8px; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 999px; background: rgba(0,0,0,.6); color: #fff; text-shadow: none; font-size: 15px; line-height: 24px; cursor: pointer; }
 .dialog.viewer { width: min(960px, calc(100% - 24px)); }
 .viewer-body { padding: 12px; display: flex; justify-content: center; overflow: auto; }
 .viewer-body img { max-width: 100%; max-height: calc(100dvh - 140px); object-fit: contain; border-radius: 8px; }
@@ -425,8 +439,14 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
     background: var(--surface); border-top: 1px solid var(--line);
     padding: 6px 4px max(6px, env(safe-area-inset-bottom));
   }
-  .tabs a { padding: 6px 8px; font-size: 12px; }
-  main { padding: 14px 16px 96px; }
+  /* 下のタブは幅を4等分し、アイコンと文字を縦に並べる（押せる範囲を広く取る） */
+  .tabs { padding: 4px 4px max(4px, env(safe-area-inset-bottom)); }
+  .tabs a { flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 52px; justify-content: center; padding: 4px 2px; border-radius: 12px; font-size: 11px; line-height: 1.2; }
+  .tabs a:hover { background: none; }
+  .tabs a.active { background: none; color: var(--accent); font-weight: 700; }
+  .tab-ic { width: 40px; height: 26px; padding: 2px 8px; border-radius: 999px; }
+  .tabs a.active .tab-ic { background: var(--accent-2); }
+  main { padding: 14px 16px 104px; }
   .toast { top: calc(max(8px, env(safe-area-inset-top)) + 52px); }
   .form-grid, .grid-2.tight { grid-template-columns: 1fr; }
   .recipe li { grid-template-columns: 18px 1fr 40px 40px; }
@@ -447,4 +467,9 @@ label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13
 @media (pointer: coarse) {
   input:not([type=checkbox]):not([type=file]):not([type=range]):not(.title-input),
   select, textarea, .form-grid select, .form-grid textarea { font-size: 16px; }
+  /* 指で押しやすい大きさにする（小さいボタンも高さ36px以上、ズームの −／＋ は36px四方） */
+  .btn-s { min-height: 36px; padding: 6px 12px; font-size: 13px; }
+  .zoom-tools { gap: 4px; }
+  .zoom-tools .icon-btn { width: 36px; height: 36px; }
+  .icon-btn { min-width: 36px; min-height: 36px; }
 }

@@ -69,7 +69,10 @@
     let tab = (location.hash || '#mix').slice(1);
     if (!$('#view-' + tab)) tab = 'mix'; // 存在しないタブは調色を表示
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab));
-    $$('#tabs a').forEach((a) => a.classList.toggle('active', a.dataset.tab === tab));
+    $$('#tabs a').forEach((a) => {
+      a.classList.toggle('active', a.dataset.tab === tab);
+      if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current');
+    });
     if (tab !== 'paints') PF.focus = null; // 候補から開いた絵具の絞り込みは、絵具箱を離れたら解除する
     let back = false;
     if (tab === 'mix') {
@@ -620,7 +623,7 @@
         <div class="mix-row" data-i="${i}">
           ${sw(PaintDB.byId[m.paintId]?.hex || '#ccc')}
           <select data-k="paintId">${paintOptions(m.paintId)}</select>
-          <button class="icon-btn" data-rm="${i}" title="削除">×</button>
+          <button class="icon-btn" data-rm="${i}" title="この絵具を外す" aria-label="この絵具を外す">×</button>
           <input type="range" data-k="pct" value="${m.pct}" min="0" max="100" step="1" aria-label="割合">
           <input type="number" data-k="pct" value="${m.pct}" min="0" max="100" step="1" class="mono" aria-label="割合（%）">
           <span class="unit">%</span>
@@ -1135,7 +1138,7 @@
       // 所持している絵具には「切らしている」の切り替えを出す（押すと、買い直すまで調色候補の計算に使わない）
       const outBtn = owned ? `<button type="button" class="tag tag-out${out ? ' on' : ''}" data-out="${p.id}" aria-pressed="${out}" title="${out ? '買い直したら押して外します' : '使い切った絵具は、押すと買い直すまで調色候補の計算に使いません'}">${out ? '切らしている' : '切らした'}</button>` : '';
       return `<tr class="${owned ? '' : 'unowned'}${out ? ' run-out' : ''}">
-        <td><input type="checkbox" data-own="${p.id}" ${owned ? 'checked' : ''} aria-label="${esc(p.name)}を所持"></td>
+        <td class="own-cell"><label class="own-hit"><input type="checkbox" data-own="${p.id}" ${owned ? 'checked' : ''} aria-label="${esc(p.name)}を所持"></label></td>
         <td><div class="pcell">${sw(p.hex)}<span>${p.no ? `<span class="pno mono">${p.no}</span>` : ''}${esc(p.name)}</span></div>
           <div class="ptags"><span class="tag op-${p.opacity}">${PaintDB.OPACITY[p.opacity]}</span>${p.discontinued ? '<span class="tag tag-stop" title="カラーチャートで販売中止になっている色です。持っているチューブの記録に使えます">販売中止</span>' : ''}${p.mixable ? '' : '<span class="tag tag-muted" title="メタリック・蛍光・イリディッセントは混色の計算で表せないため、調色候補には使いません">計算対象外</span>'}${outBtn}</div>
           ${p.mixable ? `<div class="ladder ladder-in" aria-hidden="true">${ladder}</div>` : ''}</td>
