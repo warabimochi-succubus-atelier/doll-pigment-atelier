@@ -33,6 +33,9 @@
 /* hidden 属性を付けた要素は、display を指定したクラス（.btn など）より優先して隠す */
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
+/* ボタンやスライダーをすばやく2回押したときに画面が拡大されないようにする（ダブルタップ拡大を止める）。
+   ピンチでの拡大とスクロールはそのまま使える。touch-action は継承されないため、操作部品にも付ける */
+html, body, button, a, input, select, textarea, label, summary, [role=button] { touch-action: manipulation; }
 body {
   margin: 0; background: var(--bg); color: var(--ink);
   font: 14px/1.6 "Hiragino Sans", "Noto Sans JP", "Yu Gothic UI", "Meiryo", system-ui, sans-serif;
