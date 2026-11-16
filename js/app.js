@@ -762,6 +762,16 @@
   $('#image-close').addEventListener('click', () => viewer.close());
   viewer.addEventListener('click', (e) => { if (e.target === viewer) viewer.close(); });
 
+  const DEFAULT_NAME = '新規調色レシピ';
+  // レシピ帳にまだない名前を返す：新規調色レシピ → 新規調色レシピ (2) → (3) …
+  function defaultEntryName() {
+    const used = new Set(Store.entries().map((x) => x.name));
+    if (!used.has(DEFAULT_NAME)) return DEFAULT_NAME;
+    let n = 2;
+    while (used.has(`${DEFAULT_NAME} (${n})`)) n++;
+    return `${DEFAULT_NAME} (${n})`;
+  }
+
   function openEditor(entry, opt = {}) {
     const e = entry;
     const recipe = (items) => items?.length
@@ -775,7 +785,7 @@
       <div class="dlg-head">
         <div class="dlg-sw" style="background:${e.hex}"></div>
         <div class="grow">
-          <input name="name" class="title-input" placeholder="名称（例：コーラルピンクチーク）" value="${esc(e.name)}" required>
+          <input name="name" class="title-input" placeholder="${opt.fromMix ? `名称（空欄なら「${DEFAULT_NAME}」）` : '名称（例：コーラルピンクチーク）'}" value="${esc(e.name)}" ${opt.fromMix ? '' : 'required'}>
           <div class="mono small">${e.hex} · RGB ${rgb.join(', ')} · Lab ${Color.fmtLab(Color.rgbToLab(rgb))}</div>
         </div>
         <button type="button" class="icon-btn" data-act="close" title="閉じる" aria-label="閉じる" ${e.name ? 'autofocus' : ''}>${IC.x}</button>
@@ -902,6 +912,8 @@
       ev.preventDefault();
       const act = ev.submitter?.dataset.act;
       const data = collect();
+      // 調色の画面から新しく保存するときは、名称が空なら「新規調色レシピ」「新規調色レシピ (2)」…と付ける
+      if (!data.name && act === 'new' && opt.fromMix) data.name = defaultEntryName();
       if (!data.name) return toast('名称を入力してください');
       if (act === 'overwrite') { data.id = opt.baseId; data.createdAt = Store.get(opt.baseId)?.createdAt || Date.now(); }
       else if (act === 'new') { data.id = Store.uid(); data.createdAt = Date.now(); }
