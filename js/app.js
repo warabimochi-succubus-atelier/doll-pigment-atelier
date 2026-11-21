@@ -711,8 +711,11 @@
     // 呼び出した色をそのまま代表色にしているときは、呼び出し元の色の取得記録を引き継ぐ
     // （呼び出し案内を閉じて上書き先がなくなっても引き継ぐ。画面に残っている画像と抽出色は、この色とは関係がないので保存しない）
     const src = S.fixed?.from === 'recall' ? S.fixed.src : null;
+    // 画像の色を代表色にしているときだけ、画面の画像を参考画像として保存する
+    // （呼び出した色・数値やカラーピッカーで指定した色では、画面の画像は代表色の出どころではないため保存しない）
+    const fromImages = !S.fixed;
     // 参考画像を先に保存しておく（保存をやめた画像は、次の起動時に消える）
-    const pending = src ? [] : S.images.filter((img) => !(img.savedId && Store.hasImage(img.savedId)));
+    const pending = !fromImages ? [] : S.images.filter((img) => !(img.savedId && Store.hasImage(img.savedId)));
     if (pending.length) {
       const btn = $('#btn-save'), label = btn.textContent;
       btn.disabled = true;
@@ -736,7 +739,7 @@
       method: src ? src.method : S.fixed ? 'manual' : 'average',
       // 数値・カラーピッカーで指定した色は抽出色を使っていないので、抽出色は記録しない
       extracted: src ? [...src.extracted] : S.fixed ? [] : S.extracted.map((x) => Color.toHex(x.rgb)),
-      refImages: src ? structuredClone(src.refImages) : S.images.map((i) => ({ imageId: i.savedId, name: i.name, corrected: !!i.gains, gains: i.gains })),
+      refImages: src ? structuredClone(src.refImages) : !fromImages ? [] : S.images.map((i) => ({ imageId: i.savedId, name: i.name, corrected: !!i.gains, gains: i.gains })),
       estimated: S.candidates.map((c) => ({ items: c.items, de: +c.de.toFixed(2) })),
       actual: S.mix.map((x) => ({ ...x })),
     };
