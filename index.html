@@ -149,14 +149,14 @@
     <section id="view-library" class="view">
       <div class="card">
         <div class="filters">
-          <input id="lib-q" placeholder="名称・コメント・制作条件で検索" class="grow">
-          <select id="lib-rating">
+          <input type="search" id="lib-q" placeholder="名称・コメント・制作条件で検索" aria-label="名称・コメント・制作条件で検索" class="grow">
+          <select id="lib-rating" aria-label="評価で絞り込む">
             <option value="0">評価：すべて</option>
             <option value="5">★5のみ</option>
             <option value="4">★4以上</option>
             <option value="3">★3以上</option>
           </select>
-          <select id="lib-sort">
+          <select id="lib-sort" aria-label="並べ替え">
             <option value="new">新しい順</option>
             <option value="rating">評価の高い順</option>
             <option value="name">名称順</option>
@@ -228,7 +228,7 @@
   </main>
 
   <!-- 保存 / 詳細ダイアログ -->
-  <dialog id="entry-dialog" class="dialog">
+  <dialog id="entry-dialog" class="dialog" aria-label="カラーの詳細">
     <form method="dialog" id="entry-form"></form>
   </dialog>
 
@@ -256,11 +256,11 @@
   </dialog>
 
   <!-- このアプリについて -->
-  <dialog id="about-dialog" class="dialog about" tabindex="-1" autofocus>
+  <dialog id="about-dialog" class="dialog about" tabindex="-1" autofocus aria-labelledby="about-title">
     <form method="dialog">
       <div class="about-body">
         <img src="icons/icon-192.png" alt="" width="88" height="88" class="about-icon">
-        <h2 class="about-title">Doll Pigment Atelier</h2>
+        <h2 class="about-title" id="about-title">Doll Pigment Atelier</h2>
         <div class="about-ver mono" data-app-version></div>
         <p class="about-desc">成功した色を蓄積し、再現を支援する<br>ドールメイク用アトリエツール</p>
 

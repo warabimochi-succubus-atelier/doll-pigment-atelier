@@ -58,6 +58,36 @@ test('展開後の大きさをごまかした ZIP（ZIP 爆弾）は途中で止
   await assert.rejects(Zip.read(deflateZip('bomb.bin', content, 1000)), (e) => e instanceof Zip.ZipLimitError);
 });
 
+test('ファイル全体は読み込まず、必要な部分だけを切り出して読む', async () => {
+  const real = await Zip.create([{ name: 'a.txt', data: 'x'.repeat(10000) }, { name: 'b.bin', data: new Blob([new Uint8Array(50000)]) }]);
+  // 全体を読もうとすると失敗する Blob の代わり（size と slice だけを持つ）
+  const sliced = [];
+  const fake = { size: real.size, slice: (a, b) => { sliced.push((b ?? real.size) - a); return real.slice(a, b); }, arrayBuffer: () => { throw new Error('read whole file'); } };
+  const files = await Zip.read(fake);
+  assert.equal((await files.get('a.txt').text()).length, 10000);
+  assert.equal(files.get('b.bin').size, 50000);
+});
+
+test('中身が化けた ZIP は、壊れていると分かる（CRC）', async () => {
+  const buf = await bytes(await Zip.create([{ name: 'a.txt', data: 'hello world' }]));
+  buf[30 + 'a.txt'.length + 2] ^= 0xFF; // 中身の1バイトを変える
+  await assert.rejects(Zip.read(new Blob([buf])), (e) => e instanceof Zip.ZipCorruptError);
+});
+
+test('圧縮されたデータが壊れた ZIP も、壊れていると分かる', async () => {
+  const blob = deflateZip('a.txt', Buffer.from('abc'.repeat(500)));
+  const buf = await bytes(blob);
+  for (let i = 40; i < 50; i++) buf[i] ^= 0x5A; // 圧縮データの途中を壊す
+  await assert.rejects(Zip.read(new Blob([buf])), (e) => e instanceof Zip.ZipCorruptError);
+});
+
+test('途中が欠けた ZIP は読まない', async () => {
+  const buf = await bytes(await Zip.create([{ name: 'a.txt', data: 'hello' }, { name: 'b.txt', data: 'world' }]));
+  // 中央ディレクトリと末尾は残したまま、前の方を切り詰めると、位置が合わなくなる
+  const cut = Buffer.concat([buf.subarray(0, 10), buf.subarray(buf.length - 120)]);
+  await assert.rejects(Zip.read(new Blob([cut])));
+});
+
 test('ZIP でないファイルは例外になる', async () => {
   await assert.rejects(Zip.read(new Blob(['not a zip file at all, just text'])));
 });

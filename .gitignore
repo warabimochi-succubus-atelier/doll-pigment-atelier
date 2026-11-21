@@ -17,5 +17,6 @@ node_modules/
 # Claude Code local settings (shared settings such as launch.json stay tracked)
 .claude/settings.local.json
 
-# Exported backups from the app's settings screen
+# Exported backups from the app's settings screen (they contain personal photos; never commit them)
+doll-pigment-atelier-backup-*.zip
 doll-pigment-atelier-backup-*.json

@@ -3,7 +3,8 @@
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const stars = (n) => '★'.repeat(n) + '<span class="off">' + '★'.repeat(5 - n) + '</span>';
+  // 評価の星（読み上げでは「評価 3（5段階）」と読む。星の記号を5つ読ませない）
+  const stars = (n) => `<span role="img" aria-label="評価 ${n}（5段階）">${'★'.repeat(n)}<span class="off">${'★'.repeat(5 - n)}</span></span>`;
   const paintName = (id) => PaintDB.byId[id]?.fullLabel || id; // 品番＋色名（ライン）
   const sw = (hex, cls = '') => `<span class="sw ${cls}" style="background:${hex}"></span>`;
   // 操作のアイコン（文字の × や → はフォントで太さや位置が変わるため、SVG にそろえる。index.html の静的なアイコンと同じ描き方）
@@ -769,6 +770,8 @@
     const methodName = METHOD_LABEL[e.method];
     const rgb = Color.parseHex(e.hex);
     const isNew = !e.id;
+    // ダイアログの名前（読み上げ用）：調色の画面からの保存か、レシピ帳の詳細か
+    dlg.setAttribute('aria-label', opt.fromMix ? 'レシピ帳に保存' : `「${e.name}」の詳細`);
 
     $('#entry-form').innerHTML = `
       <div class="dlg-head">
@@ -782,7 +785,7 @@
       <div class="dlg-body">
         <div class="form-grid">
           <label class="span2">評価
-            <div class="stars-input" data-v="${e.rating}">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-v="${n}" class="${n <= e.rating ? 'on' : ''}">★</button>`).join('')}</div>
+            <div class="stars-input" data-v="${e.rating}" role="radiogroup" aria-label="評価">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-v="${n}" class="${n <= e.rating ? 'on' : ''}" role="radio" aria-checked="${n === e.rating}" aria-label="★${n}">★</button>`).join('')}</div>
           </label>
           <label class="span2">コメント<textarea name="comment" rows="2" placeholder="例：少し暖色寄り。頬の中心だけ3回重ねる">${esc(e.comment)}</textarea></label>
         </div>
@@ -855,7 +858,15 @@
       }
       if (b.dataset.view) return openViewer(b.dataset.view, b.dataset.name);
       const st = b.closest('.stars-input');
-      if (st) { work.rating = +b.dataset.v; $$('button', st).forEach((x) => x.classList.toggle('on', +x.dataset.v <= work.rating)); markDirty(); return; }
+      if (st) {
+        work.rating = +b.dataset.v;
+        $$('button', st).forEach((x) => {
+          x.classList.toggle('on', +x.dataset.v <= work.rating);
+          x.setAttribute('aria-checked', +x.dataset.v === work.rating);
+        });
+        markDirty();
+        return;
+      }
       const act = b.dataset.act;
       if (act === 'close') { ev.preventDefault(); if (discardOk()) dlg.close(); }
       // 上書き保存は送信ボタンにしない：入力欄で Enter を押したときに、最初の送信ボタン（上書き保存）ではなく
@@ -1260,7 +1271,9 @@
       const zip = await Zip.create(files);
       const a = document.createElement('a');
       a.href = URL.createObjectURL(zip);
-      a.download = `doll-pigment-atelier-backup-${new Date().toISOString().slice(0, 10)}.zip`;
+      // ファイル名の日付は端末の日付にする（toISOString は世界標準時なので、日本時間の 0〜9 時は前日になる）
+      const d = new Date(), pad = (n) => String(n).padStart(2, '0');
+      a.download = `doll-pigment-atelier-backup-${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}.zip`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 10000); // ダウンロードが始まるまで残す
       toast(`カラー ${entries.length} 件と画像 ${imgs.length} 枚を書き出しました（${fmtBytes(zip.size)}）`);
@@ -1292,6 +1305,10 @@
     e.target.value = ''; // 同じファイルを選び直せるようにする
     if (!f) return;
     let data, images;
+    // 大きなバックアップは、中身を確かめるのに時間がかかるので、読み込み中であることを知らせる
+    const label = $('#import-input').closest('label');
+    label.classList.add('busy');
+    if (f.size > 20 * 1024 * 1024) toast('バックアップを読み込んでいます…');
     try {
       ({ data, images } = await readBackup(f));
       if (!Array.isArray(data.entries)) throw new Error('format');
@@ -1300,7 +1317,11 @@
       console.warn(err);
       return toast(err instanceof Zip.ZipLimitError
         ? 'ファイルが大きすぎるため読み込めません（このアプリで書き出したバックアップか確認してください）'
-        : 'バックアップファイルを読み込めませんでした');
+        : err instanceof Zip.ZipCorruptError
+          ? 'バックアップファイルが壊れているため読み込めません（ダウンロードやコピーが途中で失敗していないか確認してください）'
+          : 'バックアップファイルを読み込めませんでした');
+    } finally {
+      label.classList.remove('busy');
     }
     if (!confirm(`カラー ${data.entries.length} 件${images.length ? `と画像 ${images.length} 枚` : ''}をインポートします。現在のデータは置き換わります。`)) return;
     const ok = await Store.replaceAll({ version: 1, entries: data.entries, owned: data.owned || [], runOut: data.runOut || [], lastMedium: data.lastMedium }, images);

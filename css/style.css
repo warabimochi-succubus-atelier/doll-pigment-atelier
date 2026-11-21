@@ -118,6 +118,7 @@ main { max-width: 1180px; margin: 0 auto; padding: 20px 24px 80px; }
 }
 .btn:hover { border-color: var(--accent); }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.busy { opacity: .5; pointer-events: none; } /* 処理中（ファイルを選ぶ label のボタンは disabled にできないため） */
 /* 押している間の反応（タッチでは :hover が出ないため） */
 .btn:active:not(:disabled) { background: var(--surface-2); border-color: var(--accent); }
 .btn-primary:active:not(:disabled) { background: var(--accent); filter: brightness(.92); }

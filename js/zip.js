@@ -99,46 +99,70 @@ const Zip = (() => {
     return new Blob(chunks);
   }
 
-  // ZIP の Blob → Map(ファイル名 → Blob)。ZIP として読めなければ例外（上限を超えたら ZipLimitError）
+  // 中身が壊れている（CRC が合わない、途中が欠けているなど）
+  class ZipCorruptError extends Error {}
+  const bytesOf = async (blob) => new Uint8Array(await blob.arrayBuffer());
+
+  // ZIP の Blob → Map(ファイル名 → Blob)。ZIP として読めなければ例外
+  // （上限を超えたら ZipLimitError、中身が壊れていたら ZipCorruptError）
+  // ファイル全体はメモリに読み込まず、必要な部分だけを切り出して読む（大きなバックアップでもスマホのタブが落ちないように）。
+  // 取り出したファイルは、元のファイルを切り出した Blob（コピーしない）。中身は1つずつ読んで CRC を確かめる
   async function read(blob) {
-    const buf = new Uint8Array(await blob.arrayBuffer());
-    const dv = new DataView(buf.buffer);
+    // 末尾（終端レコード。後ろにコメントが付いていることがあるので、最大 64KB 戻って探す）
+    const tailAt = Math.max(0, blob.size - 22 - 0xFFFF);
+    const tail = await bytesOf(blob.slice(tailAt));
+    const tv = new DataView(tail.buffer);
     let eocd = -1;
-    for (let i = buf.length - 22; i >= Math.max(0, buf.length - 22 - 0xFFFF); i--) {
-      if (dv.getUint32(i, true) === 0x06054B50) { eocd = i; break; }
+    for (let i = tail.length - 22; i >= 0; i--) {
+      if (tv.getUint32(i, true) === 0x06054B50) { eocd = i; break; }
     }
     if (eocd < 0) throw new Error('not a zip');
-    const count = dv.getUint16(eocd + 10, true);
+    const count = tv.getUint16(eocd + 10, true);
     if (count > LIMITS.files) throw new ZipLimitError('too many files');
-    let p = dv.getUint32(eocd + 16, true);
+    const cdSize = tv.getUint32(eocd + 12, true), cdAt = tv.getUint32(eocd + 16, true);
+    if (cdAt + cdSize > blob.size) throw new ZipCorruptError('central directory out of range');
+    // 中央ディレクトリ（ファイルの一覧）だけを読む
+    const cd = await bytesOf(blob.slice(cdAt, cdAt + cdSize));
+    const dv = new DataView(cd.buffer);
     const dec = new TextDecoder();
     const out = new Map();
-    let total = 0;
+    let total = 0, p = 0;
     for (let n = 0; n < count; n++) {
-      if (dv.getUint32(p, true) !== 0x02014B50) throw new Error('broken zip');
+      if (p + 46 > cd.length || dv.getUint32(p, true) !== 0x02014B50) throw new ZipCorruptError('broken central directory');
       const method = dv.getUint16(p + 10, true);
+      const crc = dv.getUint32(p + 16, true);
       const size = dv.getUint32(p + 20, true);    // 圧縮後
       const usize = dv.getUint32(p + 24, true);   // 展開後（申告の値）
       const nameLen = dv.getUint16(p + 28, true), extraLen = dv.getUint16(p + 30, true), commentLen = dv.getUint16(p + 32, true);
       const localAt = dv.getUint32(p + 42, true);
-      const name = dec.decode(buf.subarray(p + 46, p + 46 + nameLen));
+      const name = dec.decode(cd.subarray(p + 46, p + 46 + nameLen));
       p += 46 + nameLen + extraLen + commentLen;
       if (name.endsWith('/')) continue; // フォルダ
       if (usize > LIMITS.entryBytes) throw new ZipLimitError('entry too large');
-      const start = localAt + 30 + dv.getUint16(localAt + 26, true) + dv.getUint16(localAt + 28, true);
-      if (start + size > buf.length) throw new Error('broken zip');
-      const raw = new Blob([buf.subarray(start, start + size)]);
+      // ファイルごとの見出し（ローカルヘッダー）から、中身の位置を求める
+      if (localAt + 30 > blob.size) throw new ZipCorruptError('local header out of range');
+      const lh = new DataView((await bytesOf(blob.slice(localAt, localAt + 30))).buffer);
+      if (lh.getUint32(0, true) !== 0x04034B50) throw new ZipCorruptError('broken local header');
+      const start = localAt + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+      if (start + size > blob.size) throw new ZipCorruptError('entry out of range');
+      const raw = blob.slice(start, start + size);
       let file;
       if (method === 0) file = raw;
       // 申告の大きさを超えて展開しない（申告をごまかした ZIP 爆弾を止める）
-      else if (method === 8 && typeof DecompressionStream === 'function') file = await inflate(raw, usize);
-      else throw new Error(`unsupported method ${method}`);
+      else if (method === 8 && typeof DecompressionStream === 'function') {
+        try { file = await inflate(raw, usize); } catch (e) {
+          if (e instanceof ZipLimitError) throw e;
+          throw new ZipCorruptError(`cannot inflate: ${name}`); // 圧縮されたデータが壊れている
+        }
+      } else throw new Error(`unsupported method ${method}`);
       total += file.size;
       if (total > LIMITS.totalBytes) throw new ZipLimitError('total too large');
+      // 中身が壊れていないか（ダウンロードの失敗などで、途中のデータが化けていないか）
+      if (crc32(await bytesOf(file)) !== crc) throw new ZipCorruptError(`crc mismatch: ${name}`);
       out.set(name, file);
     }
     return out;
   }
 
-  return { create, read, crc32, LIMITS, ZipLimitError };
+  return { create, read, crc32, LIMITS, ZipLimitError, ZipCorruptError };
 })();

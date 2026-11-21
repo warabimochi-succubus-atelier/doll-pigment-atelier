@@ -424,8 +424,8 @@ const Store = (() => {
     // 全部を入れ替える（インポート）。imageRecords は画像 { id, name, type, w, h, full, thumb } の一覧
     // 以前の版のバックアップ（エントリの中にサムネイルの data URL がある）も読み込める
     // 中身は確かめてから取り込む（cleanDb / cleanImage）。保存できなければ、メモリも元に戻す
-    replaceAll(next, imageRecords = []) {
-      return replaceWith(() => {
+    async replaceAll(next, imageRecords = []) {
+      const ok = await replaceWith(() => {
         images = new Map(imageRecords.map(cleanImage).filter(Boolean).map((im) => [im.id, im]));
         db = cleanDb(next);
         extractInlineImages(db.entries);
@@ -436,6 +436,21 @@ const Store = (() => {
         const used = new Set(db.entries.flatMap((e) => imageRefs(e).map((r) => r.imageId)));
         [...images.keys()].filter((id) => !used.has(id)).forEach((id) => images.delete(id));
       });
+      // 読み込んだ画像は、選んだバックアップファイルを切り出したもの（コピーしていない）。
+      // あとでそのファイルが動かされたり消されたりしても表示できるよう、保存した IndexedDB の画像に持ち替える
+      if (ok && idb) {
+        try {
+          const saved = await reqP(idb.transaction('images', 'readonly').objectStore('images').getAll());
+          for (const im of saved) {
+            for (const k of ['thumb', 'full']) {
+              const u = urls.get(`${im.id}:${k}`);
+              if (u) { URL.revokeObjectURL(u); urls.delete(`${im.id}:${k}`); }
+            }
+          }
+          images = new Map(saved.map((im) => [im.id, im]));
+        } catch (e) { console.warn(e); }
+      }
+      return ok;
     },
     // サンプルのカラー（6件）を追加する。今のカラーは消さない
     async addSamples() {
