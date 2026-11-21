@@ -844,6 +844,18 @@
     };
     form.oninput = markDirty;
     form.onchange = markDirty;
+    // 書き換えたあとで × や Esc で閉じるときは、入力した内容が消えることを確かめる
+    const discardOk = () => !dirty || confirm(opt.fromMix
+      ? '入力した名称や評価・コメントを保存せずに閉じます。よろしいですか？（調色の画面の内容はそのまま残ります）'
+      : '書き換えた内容を保存せずに閉じます。よろしいですか？');
+    // Esc はキーの段階で止める（cancel イベントは、ブラウザによって止められないことがあるため）
+    dlg.onkeydown = (ev) => {
+      if (ev.key !== 'Escape' || !dirty || ev.isComposing) return; // 日本語入力の変換中の Esc は変換の取り消し
+      ev.preventDefault();
+      if (discardOk()) dlg.close();
+    };
+    // スマホの戻る操作など：止められるときだけ確かめる（止められないのに聞くと、キャンセルしても閉じてしまう）
+    dlg.oncancel = (ev) => { if (ev.cancelable && !discardOk()) ev.preventDefault(); };
 
     form.onclick = async (ev) => {
       const b = ev.target.closest('button');
@@ -858,7 +870,7 @@
       const st = b.closest('.stars-input');
       if (st) { work.rating = +b.dataset.v; $$('button', st).forEach((x) => x.classList.toggle('on', +x.dataset.v <= work.rating)); markDirty(); return; }
       const act = b.dataset.act;
-      if (act === 'close') { ev.preventDefault(); dlg.close(); }
+      if (act === 'close') { ev.preventDefault(); if (discardOk()) dlg.close(); }
       // 上書き保存は送信ボタンにしない：入力欄で Enter を押したときに、最初の送信ボタン（上書き保存）ではなく
       // 主ボタン（レシピ帳に追加）が押されるようにするため（呼び出し元を誤って上書きしない）
       if (act === 'overwrite') return submit('overwrite');
