@@ -205,11 +205,14 @@ const PaintDB = (() => {
       .slice(0, top);
   }
 
+  // 混色の予測。メタリック・蛍光・イリディッセント（計算対象外）は混色の計算で表せないので、予測には含めない
+  // （実際の調色の記録には使える）。skipped は除いた絵具の数。計算できる絵具がなければ null
   function evaluate(items, targetRgb) {
-    const valid = items.filter((x) => byId[x.paintId] && x.pct > 0);
+    const used = items.filter((x) => byId[x.paintId] && x.pct > 0);
+    const valid = used.filter((x) => byId[x.paintId].mixable);
     if (!valid.length) return null;
     const rgb = mixRgb(valid.map((x) => byId[x.paintId]), valid.map((x) => x.pct));
-    const out = { rgb, hex: Color.toHex(rgb) };
+    const out = { rgb, hex: Color.toHex(rgb), skipped: used.length - valid.length };
     if (targetRgb) out.de = Color.dE00(Color.rgbToLab(rgb), Color.rgbToLab(targetRgb));
     return out;
   }

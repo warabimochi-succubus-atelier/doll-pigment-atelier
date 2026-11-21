@@ -328,7 +328,11 @@ function drawableToCanvas(src, w, h, maxSide = 1200) {
   const c = document.createElement('canvas');
   c.width = Math.round(w * s);
   c.height = Math.round(h * s);
-  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  const ctx = c.getContext('2d');
+  // 透明な部分は白にする（JPEG で保存すると透明な部分が黒になり、色を取ると黒が混ざるため）
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, c.width, c.height);
+  ctx.drawImage(src, 0, 0, c.width, c.height);
   return c;
 }
 

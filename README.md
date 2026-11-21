@@ -53,6 +53,14 @@ python tools/dev-server.py
 
 スマホで試すときは、PC と同じ Wi-Fi につなぎ、起動時に表示される `http://<PC の IP アドレス>:8765/` を開きます。LAN のアドレスは https でも `localhost` でもないので、Service Worker は動きません（オフライン動作と「新しい版があります」の案内は確かめられません）。以前に `python -m http.server` で開いていた端末は、古いファイルがキャッシュに残っていることがあるため、一度そのサイトのデータを消してください（iOS は 設定 → アプリ → Safari → 詳細 → Web サイトデータ。そのアドレスで保存したデータも消えます）。
 
+## テスト
+
+```bash
+node --test tests/
+```
+
+Node.js（22.2 以降）だけで動きます（追加のパッケージは不要）。`js/` のスクリプトを Node の `vm` で読み込み、色の計算（`color.js`）、混色と逆引き調色（`km.js`）、読み込んだデータの確認（`store.js`。IndexedDB は使わずメモリだけで動かす）、ZIP の読み書き（`zip.js`）を確かめます。画面の操作はテストしていないので、ブラウザでも確かめてください。
+
 ## 公開
 
 GitHub Pages で公開します（仕様書 5.1）。
@@ -116,6 +124,7 @@ manifest.webmanifest  PWA マニフェスト
 sw.js                 Service Worker（オフライン用。新しい版が届いたら画面に知らせる）
 .nojekyll             GitHub Pages の Jekyll 変換を止め、ファイルをそのまま配信する（中身は空）
 tools/dev-server.py   開発用のサーバー（キャッシュさせずに配信する）
+tests/                テスト（node --test tests/。load.js は js/ のスクリプトを Node で読み込む）
 LICENSE               MIT License
 NOTICE.md             ロゴ・アイコンと Mixbox の権利について
 ```

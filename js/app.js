@@ -76,7 +76,8 @@
   // ---------------- タブ ----------------
   function route() {
     let tab = (location.hash || '#mix').slice(1);
-    if (!$('#view-' + tab)) tab = 'mix'; // 存在しないタブは調色を表示
+    // 存在しないタブは調色を表示（querySelector だと、ハッシュに記号が入ったときに例外になるので getElementById で探す）
+    if (!document.getElementById('view-' + tab)) tab = 'mix';
     $$('.view').forEach((v) => v.classList.toggle('active', v.id === 'view-' + tab));
     $$('#tabs a').forEach((a) => {
       a.classList.toggle('active', a.dataset.tab === tab);
@@ -321,7 +322,7 @@
   $('#cam-shoot').addEventListener('click', () => {
     const w = camVideo.videoWidth, h = camVideo.videoHeight;
     if (!w || !h) return toast('カメラの準備ができていません。少し待ってから撮影してください');
-    addImage(drawableToCanvas(camVideo, w, h), shotName());
+    addImage(drawableToCanvas(camVideo, w, h, 1600), shotName()); // ファイルから追加した画像と同じ長辺 1600px
     closeCamera();
     toast('撮影した写真を追加しました');
   });
@@ -616,7 +617,7 @@
   // ---- 手動調整 ----
   // 所持している絵具（切らしているものを除く）を先に並べ、残りはラインごとにまとめる
   const paintOptions = (sel) => {
-    const opt = (p, text) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(text)}</option>`;
+    const opt = (p, text) => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(text)}${p.mixable ? '' : '（計算対象外）'}</option>`;
     const own = PaintDB.paints.filter((p) => Store.isUsable(p.id));
     return (own.length ? `<optgroup label="所持している絵具">${own.map((p) => opt(p, p.fullLabel)).join('')}</optgroup>` : '')
       + PaintDB.lines.map((l) => {
@@ -651,8 +652,11 @@
         </div>
         <div class="kv"><span>予測色</span><b class="mono">${ev.hex}</b>
           <span>絵具の合計</span><b><span class="mono">${total}%</span>${total === 100 ? '' : '<span class="note">（保存するときに、比率を変えずに100%にそろえます）</span>'}</b></div>
-        ${ev.de != null ? deBadge(ev.de) : ''}`
-      : '<div class="empty small">混色の予測がここに出ます</div>';
+        ${ev.de != null ? deBadge(ev.de) : ''}
+        ${ev.skipped ? '<div class="note">計算対象外の絵具（メタリック・蛍光・イリディッセント）は、予測に含めていません</div>' : ''}`
+      : S.mix.some((m) => m.pct > 0 && PaintDB.byId[m.paintId] && !PaintDB.byId[m.paintId].mixable)
+        ? '<div class="empty small">計算対象外の絵具（メタリック・蛍光・イリディッセント）だけなので、混色の予測は出せません</div>'
+        : '<div class="empty small">混色の予測がここに出ます</div>';
   }
   $('#mix-rows').addEventListener('input', (e) => {
     const row = e.target.closest('.mix-row');
@@ -895,19 +899,33 @@
         recall(e.id);
       }
     };
+    // 記録画像の保存中は、保存・呼び出しのボタンを押せないようにする（押すと、保存中の画像が記録に入らないため）
+    let storingImages = false;
     form.querySelector('[data-rec]').onchange = async (ev) => {
       work.recordImages = work.recordImages || [];
       const files = [...ev.target.files];
       ev.target.value = '';
-      for (const f of files) {
-        const c = await loadImageFile(f, 1600);
-        if (!c) continue;
-        const id = await storeImage(c, f.name);
-        if (!id) { toast(SAVE_FAILED); break; }
-        work.recordImages.push({ imageId: id, name: f.name });
+      if (!files.length) return;
+      storingImages = true;
+      const btns = $$('.dlg-foot button', form);
+      const wasDisabled = btns.map((x) => x.disabled);
+      btns.forEach((x) => (x.disabled = true));
+      $('#rec-thumbs .empty')?.remove(); // 「仕上がりの写真を追加できます」の案内
+      $('#rec-thumbs').insertAdjacentHTML('beforeend', '<div class="empty small">画像を保存中…</div>');
+      try {
+        for (const f of files) {
+          const c = await loadImageFile(f, 1600);
+          if (!c) continue;
+          const id = await storeImage(c, f.name);
+          if (!id) { toast(SAVE_FAILED); break; }
+          work.recordImages.push({ imageId: id, name: f.name });
+        }
+      } finally {
+        storingImages = false;
+        btns.forEach((x, i) => (x.disabled = wasDisabled[i]));
+        $('#rec-thumbs').innerHTML = recThumbs(work.recordImages);
+        markDirty();
       }
-      $('#rec-thumbs').innerHTML = recThumbs(work.recordImages);
-      markDirty();
     };
 
     function collect() {
@@ -934,6 +952,8 @@
       submit((ev.submitter || form.querySelector('[type=submit]'))?.dataset.act);
     };
     async function submit(act) {
+      // Enter キーでの送信は、ボタンを押せなくしていても届くので、ここでも止める
+      if (storingImages) return toast('記録画像を保存しています。終わってから保存してください');
       const data = collect();
       // 調色の画面から新しく保存するときは、名称が空なら「新規調色レシピ」「新規調色レシピ (2)」…と付ける
       if (!data.name && act === 'new' && opt.fromMix) data.name = defaultEntryName();
@@ -1011,7 +1031,8 @@
         rgb: Color.parseHex(e.hex), from: 'recall', label: `「${e.name}」から呼び出した色`,
         src: { method: e.method || 'average', extracted: [...(e.extracted || [])], refImages: structuredClone(e.refImages || []) },
       },
-      candidates: (e.estimated || []).map((c) => ({ ...c, ...PaintDB.evaluate(c.items, Color.parseHex(e.hex)) })),
+      // 予測できない候補（読み込んだデータに計算対象外の絵具だけの候補があった場合）は出さない
+      candidates: (e.estimated || []).map((c) => ({ ...c, ...PaintDB.evaluate(c.items, Color.parseHex(e.hex)) })).filter((c) => c.hex),
       mix: (e.actual || []).map((x) => ({ ...x })),
       candTime: null,
       recalled: e.id,
