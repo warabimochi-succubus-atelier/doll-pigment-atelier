@@ -16,17 +16,13 @@
   --tag-blue: #2e6ea8; --tag-purple: #6c55a8; --tag-red: #a8482e;
   color-scheme: light;
 }
+/* ダークモードは端末の設定に合わせる（アプリ内の切り替えは設けない） */
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
+  :root {
     --bg: #1d181a; --surface: #262022; --surface-2: #2f282a; --ink: #f1e8ea; --ink-2: #b3a3a8;
     --line: #3e3437; --accent: #e08ba1; --accent-2: #45303a; --shadow: none; color-scheme: dark;
     --good: #6cc495; --ok: #e0b552; --bad: #ec8a7a; --tag-blue: #8fbbe6; --tag-purple: #bba8ec; --tag-red: #ec9a84;
   }
-}
-:root[data-theme="dark"] {
-  --bg: #1d181a; --surface: #262022; --surface-2: #2f282a; --ink: #f1e8ea; --ink-2: #b3a3a8;
-  --line: #3e3437; --accent: #e08ba1; --accent-2: #45303a; --shadow: none; color-scheme: dark;
-    --good: #6cc495; --ok: #e0b552; --bad: #ec8a7a; --tag-blue: #8fbbe6; --tag-purple: #bba8ec; --tag-red: #ec9a84;
 }
 
 * { box-sizing: border-box; }
@@ -480,10 +476,9 @@ label.check input { width: 18px; height: 18px; margin: 0; accent-color: var(--ac
   .tabs {
     position: fixed; left: 0; right: 0; bottom: 0; justify-content: space-around; gap: 0;
     background: var(--surface); border-top: 1px solid var(--line);
-    padding: 6px 4px max(6px, env(safe-area-inset-bottom));
+    padding: 4px 4px max(4px, env(safe-area-inset-bottom));
   }
   /* 下のタブは幅を4等分し、アイコンと文字を縦に並べる（押せる範囲を広く取る） */
-  .tabs { padding: 4px 4px max(4px, env(safe-area-inset-bottom)); }
   .tabs a { flex: 1 1 0; flex-direction: column; gap: 2px; min-height: 52px; justify-content: center; padding: 4px 2px; border-radius: 12px; font-size: 11px; line-height: 1.2; }
   .tabs a:hover { background: none; }
   .tabs a.active { background: none; color: var(--accent); font-weight: 700; }

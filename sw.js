@@ -14,7 +14,7 @@ const ASSETS = [
   './', './index.html', './css/style.css', './manifest.webmanifest',
   './icons/icon-192.png', './icons/icon-512.png', './icons/favicon-32.png', './icons/favicon.ico', './icons/apple-touch-icon.png',
   './images/author-logo.webp',
-  './js/version.js', './js/vendor/mixbox.js', './js/color.js', './js/paints-data.js', './js/km.js', './js/store.js', './js/zip.js', './js/reverse-worker.js', './js/picker.js', './js/sample.js', './js/app.js',
+  './js/version.js', './js/vendor/mixbox.js', './js/color.js', './js/paints-data.js', './js/km.js', './js/store.js', './js/zip.js', './js/reverse-worker.js', './js/picker.js', './js/sample.js', './js/calc.js', './js/app.js',
 ];
 const DEV = self.location.hostname === 'localhost';
 const assetUrls = new Set(ASSETS.map((a) => new URL(a, self.location.href).href));

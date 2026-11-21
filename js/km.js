@@ -117,16 +117,6 @@ const PaintDB = (() => {
     }
     return { ...best, d: Math.sqrt(best.d) };
   }
-  // 組み合わせ set の中で、すべての割合を色に戻して比べる（絵具置換のように、組み合わせが1つのとき）
-  function bestForSet(set, targetLab) {
-    const comps = COMPS[set.length];
-    let bestI = 0, bestD = Infinity;
-    for (let ci = 0; ci < comps.length; ci++) {
-      const d = colorDist(set, comps[ci], targetLab);
-      if (d < bestD) { bestD = d; bestI = ci; }
-    }
-    return { set, comp: comps[bestI], d: Math.sqrt(bestD) };
-  }
 
   function finalize(r, targetLab) {
     const rgb = mixRgb(r.set, r.comp);

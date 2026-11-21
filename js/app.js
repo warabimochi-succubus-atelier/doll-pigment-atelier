@@ -20,6 +20,9 @@
   const owned = () => PaintDB.paints.map((p) => p.id).filter(Store.isUsable);
 
   const isTouch = matchMedia('(pointer: coarse)').matches; // スマホ・タブレット（タッチ操作の端末）
+  // 端末で「視差効果を減らす（動きを減らす）」を選んでいるときは、滑らかなスクロールをせずにすぐ移動する
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const scrollBehavior = () => (reduceMotion.matches ? 'auto' : 'smooth');
 
   // 案内（トースト）。ダイアログを開いていても見えるよう、最前面（top layer）に出す。
   // あとから開いたダイアログが手前に来るので、ダイアログを開いたら raiseToast で出し直す
@@ -339,43 +342,13 @@
   camDlg.addEventListener('close', stopCamera);
 
   // ---- 抽出色と代表色 ----
-  // 抽出色の平均（線形空間で平均してから sRGB に戻す）
-  function averageRgb(list) {
-    const lin = list.map((x) => Color.rgbToLinear(x.rgb));
-    return Color.linearToRgb([0, 1, 2].map((c) => lin.reduce((s, l) => s + l[c], 0) / lin.length));
-  }
+  // 代表色：呼び出し・数値指定の色、なければ抽出色の平均（計算は js/calc.js）
   function representative() {
     if (S.fixed) return S.fixed.rgb;
-    return S.extracted.length ? averageRgb(S.extracted) : null;
+    return S.extracted.length ? Calc.averageRgb(S.extracted) : null;
   }
-
-  // 外れた色：その色を除いた残りの平均から ΔE2000 がこれ以上離れている抽出色（3色以上のとき）。
-  // ただし、残りの抽出色のばらつき（残りの平均から最も離れた色の ΔE）の2倍以上離れているときに限る。
-  // 照明の違う画像から取って色が広がっているときに、両端の色にまで印が付かないようにするため
-  const OUTLIER_DE = 10;
-  const OUTLIER_SPREAD_RATIO = 2;
-  function outliers() {
-    const xs = S.extracted;
-    const out = new Map(); // id → ΔE
-    if (xs.length < 3) return out;
-    const labs = new Map(xs.map((x) => [x.id, Color.rgbToLab(x.rgb)]));
-    for (const x of xs) {
-      const rest = xs.filter((y) => y !== x);
-      const restLab = Color.rgbToLab(averageRgb(rest));
-      const de = Color.dE00(labs.get(x.id), restLab);
-      if (de < OUTLIER_DE) continue;
-      const spread = Math.max(...rest.map((y) => Color.dE00(labs.get(y.id), restLab)));
-      if (de >= spread * OUTLIER_SPREAD_RATIO) out.set(x.id, de);
-    }
-    return out;
-  }
-  // 2色だけのときは、どちらが外れているか決められないので差だけを知らせる
-  function pairGap() {
-    const xs = S.extracted;
-    if (xs.length !== 2) return 0;
-    const de = Color.dE00(Color.rgbToLab(xs[0].rgb), Color.rgbToLab(xs[1].rgb));
-    return de >= OUTLIER_DE ? de : 0;
-  }
+  const outliers = () => Calc.outliers(S.extracted); // 外れた抽出色（id → ΔE）
+  const pairGap = () => Calc.pairGap(S.extracted);   // 2色だけのときの差（離れていなければ 0）
 
   // 代表色の出どころ（保存データ用）
   const METHOD_LABEL = { manual: '数値で指定' }; // 抽出色から算出した場合は表示しない
@@ -516,7 +489,7 @@
     if (!rgb) return null;
     return `${Color.toHex(rgb)}|${owned().filter((id) => PaintDB.byId[id].mixable).join(',')}`;
   }
-  // 計算の予定と計算中のものをやめる（呼び出し・絵具置換で候補を直接決めたとき）
+  // 計算の予定と計算中のものをやめる（呼び出しで候補を直接決めたときと、保存の前に計算するとき）
   function stopReverse() {
     clearTimeout(reverseTimer);
     Reverser.cancel();
@@ -599,7 +572,7 @@
     if (use) {
       S.mix = S.candidates[+use.dataset.use].items.map((x) => ({ ...x }));
       renderMix();
-      $('#mix-rows').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      $('#mix-rows').scrollIntoView({ behavior: scrollBehavior(), block: 'center' });
       return;
     }
     // 絵具名：絵具箱でその絵具だけを表示する（切らしているにして戻ると、所持が変わるので候補を計算し直す）
@@ -686,26 +659,12 @@
   });
   $('#btn-clear-mix').addEventListener('click', () => { S.mix = []; renderMix(); });
 
-  // 実際の調色を、比率を変えずに合計100%（整数）にそろえる。0%の絵具は外す
-  // （端数は、切り捨てで減った分の大きい絵具から1%ずつ足す）
-  function normalizeMix(items) {
-    const valid = items.filter((x) => x.pct > 0);
-    const total = valid.reduce((s, x) => s + x.pct, 0);
-    if (!total) return [];
-    const raw = valid.map((x) => (x.pct * 100) / total);
-    const out = valid.map((x, i) => ({ ...x, pct: Math.floor(raw[i]) }));
-    let rest = 100 - out.reduce((s, x) => s + x.pct, 0);
-    raw.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0])
-      .forEach(([, i]) => { if (rest > 0) { out[i].pct++; rest--; } });
-    return out;
-  }
-
   $('#btn-save').addEventListener('click', async () => {
     // 合計が100%でないとき（グラムで入れたときなど）や0%の絵具があるときは、保存の前にそろえて画面にも反映する
     const total = S.mix.reduce((s, m) => s + (+m.pct || 0), 0);
     let normalized = '';
     if (S.mix.length && (total !== 100 || S.mix.some((m) => !(m.pct > 0)))) {
-      S.mix = normalizeMix(S.mix);
+      S.mix = Calc.normalizeMix(S.mix); // 比率を変えずに合計100%（整数）にそろえ、0%の絵具は外す
       renderMix();
       if (total !== 100 && S.mix.length) normalized = `絵具の合計が${total}%だったので、比率を変えずに100%にそろえました`;
     }
@@ -737,6 +696,7 @@
     // （呼び出し案内を閉じて上書き先がなくなっても引き継ぐ。画面に残っている画像と抽出色は、この色とは関係がないので保存しない）
     const src = S.fixed?.from === 'recall' ? S.fixed.src : null;
     // 画像の色を代表色にしているときだけ、画面の画像を参考画像として保存する
+    // （このときは、色を取っていない画像も比較用の写真として保存する。仕様書 3.3）
     // （呼び出した色・数値やカラーピッカーで指定した色では、画面の画像は代表色の出どころではないため保存しない）
     const fromImages = !S.fixed;
     // 参考画像を先に保存しておく（保存をやめた画像は、次の起動時に消える）
@@ -1070,7 +1030,7 @@
     // 呼び出した内容が入る「4 実際の調色」までスクロールし、一瞬強調する
     const showMixCard = () => {
       const card = $('#mix-card');
-      card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      card.scrollIntoView({ behavior: scrollBehavior(), block: 'start' });
       card.classList.remove('flash');
       void card.offsetWidth; // アニメーションをやり直す
       card.classList.add('flash');
@@ -1103,13 +1063,8 @@
   }
 
   // ================= 数値で指定（手順1） =================
-  // HEX（#D98C8C）または RGB（217, 140, 140）を受け付ける
-  function parseColorText(text) {
-    const hex = Color.parseHex(text);
-    if (hex) return hex;
-    const m = String(text).match(/\d+/g);
-    return m && m.length === 3 && m.every((v) => +v <= 255) ? m.map(Number) : null;
-  }
+  // HEX（#D98C8C）または RGB（217, 140, 140）を受け付ける（js/calc.js）
+  const parseColorText = Calc.parseColorText;
   function setInputColor(rgb, label) {
     S.fixed = { rgb, from: 'input', label };
     renderExtracted();

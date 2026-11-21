@@ -328,7 +328,8 @@ function drawableToCanvas(src, w, h, maxSide = 1200) {
   const c = document.createElement('canvas');
   c.width = Math.round(w * s);
   c.height = Math.round(h * s);
-  const ctx = c.getContext('2d');
+  // 色を取るときに画素を何度も読むので、読み出しの速い形で作る（調色の画像として使うとき）
+  const ctx = c.getContext('2d', { willReadFrequently: true });
   // 透明な部分は白にする（JPEG で保存すると透明な部分が黒になり、色を取ると黒が混ざるため）
   ctx.fillStyle = '#fff';
   ctx.fillRect(0, 0, c.width, c.height);

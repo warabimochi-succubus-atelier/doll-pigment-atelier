@@ -4,7 +4,7 @@ function makeSampleCanvas(variant = 'natural') {
   const W = 900, H = 640, cx = 450;
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
-  const ctx = c.getContext('2d');
+  const ctx = c.getContext('2d', { willReadFrequently: true }); // 調色の画像として、色を取るときに画素を何度も読む
 
   const ellipse = (x, y, rx, ry, fill, rot = 0) => {
     ctx.beginPath(); ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2);

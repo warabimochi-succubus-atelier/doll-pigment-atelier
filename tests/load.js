@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
-const FILES = ['js/vendor/mixbox.js', 'js/color.js', 'js/paints-data.js', 'js/km.js', 'js/store.js', 'js/zip.js'];
+const FILES = ['js/vendor/mixbox.js', 'js/color.js', 'js/paints-data.js', 'js/km.js', 'js/store.js', 'js/zip.js', 'js/calc.js'];
 
 function load() {
   const ctx = vm.createContext({
@@ -17,7 +17,7 @@ function load() {
   ctx.self = ctx; // mixbox.js は global（self）に mixbox を置く
   for (const f of FILES) vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), ctx, { filename: f });
   const get = (name) => vm.runInContext(name, ctx);
-  return { Color: get('Color'), PaintDB: get('PaintDB'), Store: get('Store'), Zip: get('Zip'), ctx };
+  return { Color: get('Color'), PaintDB: get('PaintDB'), Store: get('Store'), Zip: get('Zip'), Calc: get('Calc'), ctx };
 }
 
 // vm の中で作った配列・オブジェクトは別の realm のものなので、比べる前に JSON で通常の値にする

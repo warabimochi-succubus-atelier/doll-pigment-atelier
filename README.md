@@ -10,7 +10,7 @@
 
 - **A record, not a simulator**: the core of the app is a recipe book of colors that worked: the mix you actually used, a ★1–5 rating, comments, the head, skin tone, top coat, medium, and photos of the finished face. Saved colors can be searched and recalled with one tap.
 - **Colors from photos**: pick colors from several photos (front, side, daylight, indoor light). The app averages them and flags colors that stand out from the rest. A gray card in the photo lets the app correct white balance and brightness.
-- **Mixing suggestions**: for the target color, the app suggests up to three mixes of the paints you own, using up to 4 paints in 5% steps (by weight). The mixes are calculated with Mixbox, a pigment mixing model based on Kubelka–Munk theory. It covers 307 Liquitex colors (Regular, Soft and Basics), 257 of which can be used for mixing. If a paint is missing, the app replaces it with the closest paint you own.
+- **Mixing suggestions**: for the target color, the app suggests up to three mixes of the paints you own, using up to 4 paints in 5% steps (by weight). The mixes are calculated with Mixbox, a pigment mixing model based on Kubelka–Munk theory. It covers 307 Liquitex colors (Regular, Soft and Basics), 257 of which can be used for mixing. If you have run out of a paint, mark it as run out and the app recalculates the suggestions without it.
 - **Private and offline**: all data and photos stay in the browser on your device. Nothing is sent to a server, and the app keeps working offline. You can back everything up to a single ZIP file.
 
 ### Basic workflow
@@ -61,7 +61,7 @@ python tools/dev-server.py
 node --test tests/
 ```
 
-Node.js（22.2 以降）だけで動きます（追加のパッケージは不要）。`js/` のスクリプトを Node の `vm` で読み込み、色の計算（`color.js`）、混色と逆引き調色（`km.js`）、読み込んだデータの確認（`store.js`。IndexedDB は使わずメモリだけで動かす）、ZIP の読み書き（`zip.js`）を確かめます。画面の操作はテストしていないので、ブラウザでも確かめてください。
+Node.js（22.2 以降）だけで動きます（追加のパッケージは不要）。`js/` のスクリプトを Node の `vm` で読み込み、色の計算（`color.js`）、混色と逆引き調色（`km.js`）、調色の画面で使う計算（`calc.js`）、読み込んだデータの確認（`store.js`。IndexedDB は使わずメモリだけで動かす）、ZIP の読み書き（`zip.js`）を確かめます。画面の操作はテストしていないので、ブラウザでも確かめてください。
 
 ## 公開
 
@@ -116,6 +116,7 @@ js/reverse-worker.js  逆引き調色を画面とは別のスレッド（Web Wor
 js/store.js           ユーザーDB（IndexedDB。カラーエントリ・設定・画像）とサンプルデータ
 js/zip.js             バックアップ用の ZIP の書き出しと読み込み
 js/picker.js          画像の範囲選択
+js/calc.js            調色の画面で使う計算（抽出色の平均・外れた色・割合を100%にそろえる・数値の色の読み取り）
 js/sample.js          サンプル画像（アニメ系ドールの顔、照明違い2枚）の生成
 js/app.js             画面ロジック
 icons/                アプリアイコン（PWA 用 any / maskable、iOS 用、ファビコン）
