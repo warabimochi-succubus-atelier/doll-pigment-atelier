@@ -711,6 +711,27 @@
     }
     const rgb = representative() || PaintDB.evaluate(S.mix)?.rgb;
     if (!rgb) return toast('代表色か実際の調色を決めてから保存してください');
+    const btn = $('#btn-save'), label = btn.textContent;
+    // 代表色か所持を変えた直後で、調色候補がまだ前の色のままなら、今の色で計算し終えてから保存する
+    // （前の色の候補を、この色の推定調色候補として記録しないため）
+    const key = candKeyNow();
+    if (key && key !== S.candKey && mixableOwnedCount()) {
+      stopReverse();
+      btn.disabled = true;
+      btn.textContent = '調色候補を計算中…';
+      pendingKey = key; // 同じ内容の自動計算を重ねて始めない（始めると、この計算が取り消される）
+      try {
+        const res = await Reverser.run(rgb, owned(), 3);
+        if (res) Object.assign(S, { candidates: res.cands, candTime: res.ms, candKey: key });
+        renderCandidates();
+      } finally {
+        if (pendingKey === key) pendingKey = null;
+        btn.disabled = false;
+        btn.textContent = label;
+      }
+      // 計算している間に色を変えた：その色で保存し直してもらう
+      if (S.candKey !== key || candKeyNow() !== key) { scheduleReverse(); return toast('計算中に色が変わりました。もう一度「レシピ帳に保存」を押してください'); }
+    }
     const base = S.recalled ? Store.get(S.recalled) : null;
     // 呼び出した色をそのまま代表色にしているときは、呼び出し元の色の取得記録を引き継ぐ
     // （呼び出し案内を閉じて上書き先がなくなっても引き継ぐ。画面に残っている画像と抽出色は、この色とは関係がないので保存しない）
@@ -721,7 +742,6 @@
     // 参考画像を先に保存しておく（保存をやめた画像は、次の起動時に消える）
     const pending = !fromImages ? [] : S.images.filter((img) => !(img.savedId && Store.hasImage(img.savedId)));
     if (pending.length) {
-      const btn = $('#btn-save'), label = btn.textContent;
       btn.disabled = true;
       btn.textContent = '画像を保存中…';
       try {
@@ -970,7 +990,13 @@
       toast(act === 'overwrite' ? `レシピ帳の「${data.name}」を上書き保存しました`
         : act === 'new' ? `「${data.name}」をレシピ帳に${opt.baseId ? '追加' : '保存'}しました`
           : `「${data.name}」の変更を保存しました`);
-      if (opt.fromMix) S.recalled = data.id;
+      // 調色の画面から保存したら、そのカラーを上書き保存の対象にし、案内に出す
+      // （続けて微調整したときに上書きできるように。何が上書きされるかを画面で分かるようにする）
+      if (opt.fromMix) {
+        S.recalled = data.id;
+        showRecallBanner(data, act === 'overwrite' ? 'を上書き保存しました' : 'をレシピ帳に保存しました');
+        renderSimilar(); // 上書きの対象は「近い色」に出さない
+      }
     }
 
     // 名称が入っているとき（レシピ帳の詳細、呼び出したカラーの上書き）は、入力欄ではなく「閉じる」に
@@ -1039,10 +1065,7 @@
     });
     stopReverse(); // 計算中の候補で、呼び出した候補を上書きしない
     S.candKey = candKeyNow();
-    const b = $('#recall-banner');
-    b.innerHTML = `${sw(e.hex)} <span>「<b>${esc(e.name)}</b>」の調色を呼び出しました。下の絵具と割合を微調整して、上書き保存するか、別のカラーとしてレシピ帳に追加できます。</span><button class="icon-btn" id="btn-unrecall" title="呼び出しをやめる" aria-label="呼び出しをやめる">${IC.x}</button>`;
-    b.hidden = false;
-    $('#btn-unrecall').onclick = clearRecall;
+    showRecallBanner(e, 'の調色を呼び出しました');
     renderImages(); renderExtracted(); renderCandidates(); renderMix();
     // 呼び出した内容が入る「4 実際の調色」までスクロールし、一瞬強調する
     const showMixCard = () => {
@@ -1058,6 +1081,14 @@
     } else {
       showMixCard();
     }
+  }
+
+  // 上書き保存の対象（呼び出し元、または調色の画面から保存したカラー）を「4 実際の調色」の上に示す
+  function showRecallBanner(e, what) {
+    const b = $('#recall-banner');
+    b.innerHTML = `${sw(e.hex)} <span>「<b>${esc(e.name)}</b>」${what}。下の絵具と割合を微調整して、上書き保存するか、別のカラーとしてレシピ帳に追加できます。</span><button class="icon-btn" id="btn-unrecall" title="上書き保存の対象から外す" aria-label="上書き保存の対象から外す">${IC.x}</button>`;
+    b.hidden = false;
+    $('#btn-unrecall').onclick = clearRecall;
   }
 
   // 呼び出しの案内を閉じる（呼び出した色・候補・調色はそのまま残る）
