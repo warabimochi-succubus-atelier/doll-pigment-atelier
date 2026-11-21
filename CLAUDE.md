@@ -14,4 +14,4 @@
 - 起動: `python tools/dev-server.py` → http://localhost:8765/（`python -m http.server` と違い、キャッシュさせないヘッダーを付けて配信する）
 - テスト: `node --test tests/`（追加のパッケージ不要）。`js/` の計算・データ処理を変えたら実行する。
 - ファイル構成と現在の制限は [README.md](README.md) を参照。
-- 公開する変更では `js/version.js` の `APP_VERSION` を上げる（Service Worker のキャッシュ名に使う）。
+- アプリのファイル（HTML / CSS / JS / アイコンなど）を変えたら、必ず `js/version.js` の `APP_VERSION` を上げる。Service Worker はアプリのファイルを版ごとのキャッシュから返すので、上げないと利用者に届かない（localhost では毎回サーバーから取るので、開発中は気づけない。公開と同じ動きは http://127.0.0.1:8765/ で確かめる）。

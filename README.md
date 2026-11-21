@@ -49,6 +49,8 @@ python tools/dev-server.py
 
 ブラウザで http://localhost:8765/ を開きます（`index.html` を直接開いても動きます。Service Worker だけは http で配信したときに有効になります）。ポート番号は `python tools/dev-server.py 8000` のように変えられます。
 
+`localhost` で開いたときは、Service Worker も毎回サーバーからファイルを取るので、版を上げなくても変更が見えます。公開したときと同じ動き（アプリのファイルは、版ごとのキャッシュから返す。変更は版を上げたときだけ「新しい版があります」で届く）を確かめるときは、http://127.0.0.1:8765/ で開きます（`localhost` とは別のサイトとして扱われるので、保存したデータも別になります）。
+
 `tools/dev-server.py` は `python -m http.server` と同じようにファイルを配信し、すべての応答に `Cache-Control: no-cache` を付けます。`python -m http.server` はキャッシュの指示を送らないため、ブラウザがファイルをキャッシュから読み、変更が反映されないことがあります。
 
 スマホで試すときは、PC と同じ Wi-Fi につなぎ、起動時に表示される `http://<PC の IP アドレス>:8765/` を開きます。LAN のアドレスは https でも `localhost` でもないので、Service Worker は動きません（オフライン動作と「新しい版があります」の案内は確かめられません）。以前に `python -m http.server` で開いていた端末は、古いファイルがキャッシュに残っていることがあるため、一度そのサイトのデータを消してください（iOS は 設定 → アプリ → Safari → 詳細 → Web サイトデータ。そのアドレスで保存したデータも消えます）。
@@ -68,7 +70,7 @@ GitHub Pages で公開します（仕様書 5.1）。
 - 公開 URL：https://warabimochi-succubus-atelier.github.io/doll-pigment-atelier/
 - 設定：リポジトリの Settings → Pages で、Source を「Deploy from a branch」、Branch を `main` / `/ (root)` にする
 - ビルドは不要です。main に push すると公開されます。
-- 公開する変更では `js/version.js` の `APP_VERSION` を上げてください（例：`0.9.0` → `0.9.1`）。Service Worker のキャッシュ名はこの版から作るので、利用者の端末に新しい版が入り、画面に「新しい版があります」と表示されます。「更新する」を押すと切り替わり、古いキャッシュは消えます。
+- アプリのファイル（`index.html`・`css/`・`js/`・アイコンなど）を変えたら、必ず `js/version.js` の `APP_VERSION` を上げてください（例：`0.9.0` → `0.9.1`）。インストールしたアプリは、アプリのファイルを版ごとのキャッシュから読むので、版を上げないと変更が利用者に届きません。版を上げると利用者の端末に新しい版が入り、画面に「新しい版があります」と表示されます。「更新する」を押すと切り替わり、古いキャッシュは消えます。README などのドキュメントだけの変更では、版を上げる必要はありません。
 
 ## 画面
 
@@ -121,7 +123,7 @@ icons/source/         アイコンの元画像
 images/author-logo.webp  作者ロゴ（「このアプリについて」ダイアログ）
 images/screenshot-mix.png  README に載せている調色画面のスクリーンショット
 manifest.webmanifest  PWA マニフェスト
-sw.js                 Service Worker（オフライン用。新しい版が届いたら画面に知らせる）
+sw.js                 Service Worker（オフライン用。アプリのファイルを版ごとにキャッシュし、新しい版が届いたら画面に知らせる）
 .nojekyll             GitHub Pages の Jekyll 変換を止め、ファイルをそのまま配信する（中身は空）
 tools/dev-server.py   開発用のサーバー（キャッシュさせずに配信する）
 tests/                テスト（node --test tests/。load.js は js/ のスクリプトを Node で読み込む）
