@@ -133,6 +133,12 @@ const Store = (() => {
 
   // ---------------- IndexedDB ----------------
   let idb = null;          // 開いたデータベース（使えないときは null。そのときはメモリだけで動く）
+  // 保存できなくなった理由（null 以外なら、書き込みはすべて失敗にする。メモリだけで動かすと、保存できたように見えてしまうため）
+  //   'versionchange' … 別のタブで新しい版が開かれ、データベースを明け渡した
+  //   'blocked'       … 別のタブで古い版が開いたままで、データベースを開けなかった
+  let lost = null;
+  let onLost = null;       // lost になったときに呼ぶ（画面で再読み込みを案内する）
+  const OPEN_BLOCKED_MS = 3000; // 別のタブがデータベースを閉じるのを待つ時間
   let db = fresh([]);      // メモリ上のユーザーDB { version, entries, owned, runOut, lastMedium }
   let persistAsked = false;
   let images = new Map();  // 画像 id → { id, name, type, w, h, full, thumb }
@@ -145,6 +151,7 @@ const Store = (() => {
   // 1つのトランザクションで書き込み、完了（コミット）したら true を返す
   // IndexedDB が使えないときはメモリだけで動かす（起動時に、画面を閉じると消えることを知らせる）ので true を返す
   function write(stores, fn) {
+    if (lost) return Promise.resolve(false);
     if (!idb) return Promise.resolve(true);
     return new Promise((resolve) => {
       let tx;
@@ -165,9 +172,27 @@ const Store = (() => {
         if (!d.objectStoreNames.contains('meta')) d.createObjectStore('meta', { keyPath: 'key' });
         if (!d.objectStoreNames.contains('images')) d.createObjectStore('images', { keyPath: 'id' });
       };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-      req.onblocked = () => reject(new Error('blocked'));
+      let timedOut = false, timer = null;
+      req.onsuccess = () => {
+        clearTimeout(timer);
+        const d = req.result;
+        if (timedOut) { d.close(); return; } // 待ちきれずに諦めたあとで開けた：使わずに閉じる
+        // 別のタブで新しい版（DB_VERSION が大きい）が開かれたら、明け渡して再読み込みを案内する
+        // （閉じないと、新しい版のタブがデータベースを開けない）
+        d.onversionchange = () => {
+          d.close();
+          if (idb === d) idb = null;
+          lost = 'versionchange';
+          onLost?.(lost);
+        };
+        resolve(d);
+      };
+      req.onerror = () => { clearTimeout(timer); reject(req.error); };
+      // 別のタブが古い版のまま開いている：閉じてくれるのを少し待ち、だめなら諦める
+      req.onblocked = () => {
+        if (timer) return;
+        timer = setTimeout(() => { timedOut = true; reject(new Error('blocked')); }, OPEN_BLOCKED_MS);
+      };
     });
   }
   const putMeta = (key) => write('meta', (s) => s.meta.put({ key, value: db[key] }));
@@ -254,7 +279,7 @@ const Store = (() => {
     } catch (e) { return null; }
   }
 
-  // 起動時に一度呼ぶ。{ ok: IndexedDB に保存できるか, migrated: 以前の版のデータを移したか }
+  // 起動時に一度呼ぶ。{ ok: IndexedDB に保存できるか, migrated: 以前の版のデータを移したか, blocked: 別のタブのせいで開けなかったか }
   async function init() {
     try {
       idb = await open();
@@ -281,9 +306,16 @@ const Store = (() => {
       if (ok && legacy) { try { localStorage.removeItem(LEGACY_KEY); } catch (e) { /* 消せなくても続ける */ } }
       return { ok, migrated: !!legacy && ok };
     } catch (e) {
-      // プライベートブラウズなどで IndexedDB が使えない：この画面を閉じるまでメモリだけで動かす
       console.warn(e);
       idb = null;
+      // 別のタブが古い版のまま開いている：データはあるが読めないので、空のレシピ帳で上書きしないよう保存もしない
+      if (e?.message === 'blocked') {
+        lost = 'blocked';
+        images = new Map();
+        db = fresh([]);
+        return { ok: false, migrated: false, blocked: true };
+      }
+      // プライベートブラウズなどで IndexedDB が使えない：この画面を閉じるまでメモリだけで動かす
       images = new Map();
       const legacy = readLegacy();
       db = legacy ? cleanDb(legacy) : fresh([]);
@@ -352,6 +384,8 @@ const Store = (() => {
     imageRecords: () => [...images.values()], // バックアップ用
     get db() { return db; },
     get available() { return !!idb; }, // IndexedDB に保存できているか
+    get lost() { return lost; },       // 保存できなくなった理由（'versionchange' | 'blocked' | null）
+    set onLost(fn) { onLost = fn; },
     entries: () => db.entries,
     get: (id) => db.entries.find((e) => e.id === id),
     // 保存できたら true。保存できなければメモリも元に戻す

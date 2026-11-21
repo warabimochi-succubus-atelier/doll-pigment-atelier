@@ -37,6 +37,8 @@
   }
   if (!popoverOk) toastEl.hidden = true;
   function toast(msg) {
+    // 別のタブのせいで保存できなくなっているときは、空き容量ではなく再読み込みを案内する
+    if (msg === SAVE_FAILED && Store.lost) msg = '保存できませんでした。画面上部の案内から再読み込みしてください';
     toastEl.textContent = msg;
     showToastEl();
     clearTimeout(toast.t);
@@ -827,7 +829,7 @@
           <button type="submit" class="btn btn-ghost" data-act="save" disabled title="書き換えた内容をレシピ帳に保存します">変更を保存</button>
           <button type="button" class="btn btn-primary" data-act="recall" title="このレシピを調色の画面に読み込みます">調色に呼び出す${IC.right}</button>`
         : `<span class="grow"></span>
-          ${opt.baseId ? '<button type="submit" class="btn btn-ghost" data-act="overwrite" title="レシピ帳の呼び出し元のカラーを更新します">上書き保存</button>' : ''}
+          ${opt.baseId ? '<button type="button" class="btn btn-ghost" data-act="overwrite" title="レシピ帳の呼び出し元のカラーを更新します">上書き保存</button>' : ''}
           <button type="submit" class="btn btn-primary" data-act="new" ${opt.baseId ? 'title="呼び出し元を残して、別のカラーとしてレシピ帳に追加します"' : ''}>${opt.baseId ? 'レシピ帳に追加' : 'レシピ帳に保存'}</button>`}
       </div>`;
 
@@ -857,6 +859,9 @@
       if (st) { work.rating = +b.dataset.v; $$('button', st).forEach((x) => x.classList.toggle('on', +x.dataset.v <= work.rating)); markDirty(); return; }
       const act = b.dataset.act;
       if (act === 'close') { ev.preventDefault(); dlg.close(); }
+      // 上書き保存は送信ボタンにしない：入力欄で Enter を押したときに、最初の送信ボタン（上書き保存）ではなく
+      // 主ボタン（レシピ帳に追加）が押されるようにするため（呼び出し元を誤って上書きしない）
+      if (act === 'overwrite') return submit('overwrite');
       if (act === 'delete') {
         if (!confirm(`「${e.name}」を削除します。よろしいですか？`)) return;
         const ok = await Store.remove(e.id);
@@ -908,9 +913,12 @@
       return true;
     }
 
-    form.onsubmit = async (ev) => {
+    form.onsubmit = (ev) => {
       ev.preventDefault();
-      const act = ev.submitter?.dataset.act;
+      // 送信ボタンが分からないとき（requestSubmit() など）は、主ボタン（最初の送信ボタン）の扱いにする
+      submit((ev.submitter || form.querySelector('[type=submit]'))?.dataset.act);
+    };
+    async function submit(act) {
       const data = collect();
       // 調色の画面から新しく保存するときは、名称が空なら「新規調色レシピ」「新規調色レシピ (2)」…と付ける
       if (!data.name && act === 'new' && opt.fromMix) data.name = defaultEntryName();
@@ -928,7 +936,7 @@
         : act === 'new' ? `「${data.name}」をレシピ帳に${opt.baseId ? '追加' : '保存'}しました`
           : `「${data.name}」の変更を保存しました`);
       if (opt.fromMix) S.recalled = data.id;
-    };
+    }
 
     // 名称が入っているとき（レシピ帳の詳細、呼び出したカラーの上書き）は、入力欄ではなく「閉じる」に
     // フォーカスする（上の autofocus）。iOS では入力欄にフォーカスするとキーボードが開き、毎回閉じる操作が要るため。
@@ -1195,7 +1203,7 @@
     let persisted = '不明';
     try { persisted = (await navigator.storage?.persisted?.()) ? '許可済み' : '未許可'; } catch (e) { /* noop */ }
     $('#storage-info').innerHTML = `<span>カラーエントリ</span><b>${Store.entries().length} 件</b>
-      <span>保存先</span><b>${Store.available ? 'この端末のブラウザ（IndexedDB）' : '一時的（画面を閉じると消えます）'}</b>
+      <span>保存先</span><b>${Store.lost ? '保存できません（再読み込みしてください）' : Store.available ? 'この端末のブラウザ（IndexedDB）' : '一時的（画面を閉じると消えます）'}</b>
       <span>画像</span><b>${Store.imageCount()} 枚</b>
       <span>使用容量</span><b>${fmtBytes(Store.sizeBytes())}</b>
       <span>永続保存</span><b>${persisted}</b>`;
@@ -1313,21 +1321,35 @@
   // ---------------- 起動 ----------------
   renderImages(); renderExtracted(); renderCandidates(); renderMix();
   route();
-  if (!boot.ok) toast('このブラウザでは端末に保存できないため、画面を閉じるとデータが消えます（プライベートブラウズでは保存できません）');
+  if (boot.blocked) { /* 下の再読み込みの案内で知らせる */ }
+  else if (!boot.ok) toast('このブラウザでは端末に保存できないため、画面を閉じるとデータが消えます（プライベートブラウズでは保存できません）');
   else if (boot.migrated) toast('以前の版のデータを、新しい保存先（IndexedDB）に移しました');
   // ---------------- 版と更新 ----------------
   $$('[data-app-version]').forEach((el) => (el.textContent = `v${APP_VERSION}`));
   // 新しい版の Service Worker が待機したら案内を出し、「更新する」で切り替えて読み込み直す
+  const bar = $('#update-bar');
+  let waiting = null, reloading = false;
+  $('#update-now').addEventListener('click', () => {
+    if (!waiting) return location.reload();
+    $('#update-now').disabled = true;
+    waiting.postMessage('skipWaiting');
+  });
+  $('#update-later').addEventListener('click', () => (bar.hidden = true));
+  // 保存できなくなったときは、閉じられない案内で再読み込みを促す（このまま使っても保存されないため）
+  const showReloadBar = (msg) => {
+    $('#update-msg').textContent = msg;
+    $('#update-later').hidden = true;
+    bar.hidden = false;
+  };
+  const LOST_MSG = {
+    versionchange: '別のタブでこのアプリの新しい版が開かれたため、この画面では保存できなくなりました。再読み込みしてください（レシピ帳に保存したものは残ります）。',
+    blocked: '別のタブでこのアプリの古い版が開いているため、データを読み込めませんでした。ほかのタブを閉じてから、再読み込みしてください。',
+  };
+  if (Store.lost) showReloadBar(LOST_MSG[Store.lost]);
+  Store.onLost = (reason) => { showReloadBar(LOST_MSG[reason]); renderSettings(); };
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
-    const bar = $('#update-bar');
-    let waiting = null, reloading = false;
-    const offer = (w) => { waiting = w; bar.hidden = false; };
-    $('#update-now').addEventListener('click', () => {
-      if (!waiting) return location.reload();
-      $('#update-now').disabled = true;
-      waiting.postMessage('skipWaiting');
-    });
-    $('#update-later').addEventListener('click', () => (bar.hidden = true));
+    // 保存できなくなった案内を出しているときは、版の案内で上書きしない（どちらも「更新する」で読み込み直す）
+    const offer = (w) => { waiting = w; if (!Store.lost) bar.hidden = false; };
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (reloading || !waiting) return; // 初めて入ったときは読み込み直さない
       reloading = true;

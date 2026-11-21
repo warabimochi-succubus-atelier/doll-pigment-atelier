@@ -50,7 +50,7 @@
 
   <!-- 新しい版が届いたときの案内 -->
   <div id="update-bar" class="update-bar" role="status" hidden>
-    <span class="grow">新しい版があります。更新すると、調色の画面に読み込んだ画像と入力中の内容は消えます（レシピ帳に保存したものは残ります）。</span>
+    <span class="grow" id="update-msg">新しい版があります。更新すると、調色の画面に読み込んだ画像と入力中の内容は消えます（レシピ帳に保存したものは残ります）。</span>
     <button class="btn btn-ghost btn-s" id="update-later">あとで</button>
     <button class="btn btn-primary btn-s" id="update-now">更新する</button>
   </div>
@@ -221,7 +221,7 @@
         <ul class="plain">
           <li>調色候補は、各絵具の色（カラーチャートの色見本の色）から Mixbox で混色を計算した目安です。絵具ごとの着色力の違いや、メディウム・塗り方・下地の色は計算に入りません。提案される割合は出発点として使い、実際の見本で確かめてください。</li>
           <li>データと画像はこの端末のブラウザ（IndexedDB）に保存します。画像は長辺 1600px に縮めて保存します。</li>
-          <li>作者・ライセンス・マニュアルへのリンクは、画面右上の ⓘ から開けます。</li>
+          <li>作者・ライセンス・マニュアルへのリンクは、画面左上のアプリのアイコンと名前（版の後ろの ⓘ）を押すと開けます。</li>
         </ul>
       </div>
     </section>
